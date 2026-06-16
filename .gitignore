@@ -1,0 +1,21 @@
+# Зависимости
+node_modules/
+
+# Сборка
+dist/
+
+# Локальные переменные окружения (ключи не должны попадать в Git!)
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Системные / редакторские
+.DS_Store
+.vercel
+.idea/
+.vscode/
