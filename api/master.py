@@ -11,6 +11,7 @@ SUPABASE_URL = os.environ.get("VITE_SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
 MASTER_CODE = os.environ.get("MASTER_REGISTER_CODE")
+TG_MASTER_BOT_TOKEN = os.environ.get("TG_MASTER_BOT_TOKEN")  # подпись кабинета = токен бота мастеров
 
 # Сколько времени данные входа считаются свежими (защита от переиспользования)
 MAX_AGE = 24 * 3600
@@ -36,7 +37,7 @@ def verify_init_data(init_data):
     if not received_hash:
         return None
     data_check = "\n".join(f"{k}={parsed[k]}" for k in sorted(parsed))
-    secret = hmac.new(b"WebAppData", TG_BOT_TOKEN.encode(), hashlib.sha256).digest()
+    secret = hmac.new(b"WebAppData", TG_MASTER_BOT_TOKEN.encode(), hashlib.sha256).digest()
     computed = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(computed, received_hash):
         return None
