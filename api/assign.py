@@ -5,25 +5,9 @@ from http.server import BaseHTTPRequestHandler
 
 SUPABASE_URL = os.environ.get("VITE_SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")                # клиентский бот
+TG_MASTER_BOT_TOKEN = os.environ.get("TG_MASTER_BOT_TOKEN")  # бот мастеров
 SUPABASE_ANON_KEY = os.environ.get("VITE_SUPABASE_ANON_KEY")
-
-
-def is_authenticated(headers):
-    """Проверяет токен входа модератора через Supabase Auth."""
-    auth = headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return False
-    token = auth[7:]
-    try:
-        resp = requests.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_ANON_KEY},
-            timeout=10,
-        )
-        return resp.status_code == 200
-    except Exception:
-        return False
 
 DB_HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
@@ -32,9 +16,21 @@ DB_HEADERS = {
 }
 
 
+def is_authenticated(headers):
+    auth = headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    token = auth[7:]
+    try:
+        resp = requests.get(f"{SUPABASE_URL}/auth/v1/user",
+                            headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_ANON_KEY}, timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def get_master(master_id):
-    url = f"{SUPABASE_URL}/rest/v1/masters?id=eq.{master_id}&select=*"
-    resp = requests.get(url, headers=DB_HEADERS, timeout=10)
+    resp = requests.get(f"{SUPABASE_URL}/rest/v1/masters?id=eq.{master_id}&select=*", headers=DB_HEADERS, timeout=10)
     resp.raise_for_status()
     rows = resp.json()
     return rows[0] if rows else None
@@ -42,43 +38,29 @@ def get_master(master_id):
 
 def assign_ticket(ticket_id, master_id, master_name):
     url = f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}"
-    headers = dict(DB_HEADERS)
-    headers["Prefer"] = "return=representation"
-    payload = {
-        "assigned_master_id": master_id,
-        "assigned_master_name": master_name,
-        "status": "in_progress",
-    }
+    headers = dict(DB_HEADERS); headers["Prefer"] = "return=representation"
+    payload = {"assigned_master_id": master_id, "assigned_master_name": master_name, "status": "in_progress"}
     resp = requests.patch(url, headers=headers, json=payload, timeout=10)
     resp.raise_for_status()
     rows = resp.json()
     return rows[0] if rows else None
 
 
-def send_message(chat_id, text, reply_markup=None):
+def tg_send(token, chat_id, text, reply_markup=None):
     body = {"chat_id": chat_id, "text": text}
     if reply_markup:
         body["reply_markup"] = reply_markup
-    requests.post(
-        f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
-        json=body,
-        timeout=10,
-    )
+    requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=body, timeout=10)
 
 
 def build_task_text(ticket):
     meta = ticket.get("metadata") or {}
     parts = ["🛠 Новая задача"]
-    if meta.get("name"):
-        parts.append(f"Клиент: {meta['name']}")
-    if meta.get("phone"):
-        parts.append(f"Телефон: {meta['phone']}")
-    if meta.get("address"):
-        parts.append(f"Адрес: {meta['address']}")
-    if meta.get("urgency"):
-        parts.append(f"Срочность: {meta['urgency']}")
-    if meta.get("description"):
-        parts.append(f"Проблема: {meta['description']}")
+    if meta.get("name"): parts.append(f"Клиент: {meta['name']}")
+    if meta.get("phone"): parts.append(f"Телефон: {meta['phone']}")
+    if meta.get("address"): parts.append(f"Адрес: {meta['address']}")
+    if meta.get("urgency"): parts.append(f"Срочность: {meta['urgency']}")
+    if meta.get("description"): parts.append(f"Проблема: {meta['description']}")
     return "\n".join(parts)
 
 
@@ -106,36 +88,33 @@ class handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length).decode("utf-8"))
             ticket_id = body.get("ticket_id")
             master_id = body.get("master_id")
-
             if not ticket_id or not master_id:
-                self._send(400, {"ok": False, "error": "bad request"})
-                return
+                self._send(400, {"ok": False, "error": "bad request"}); return
 
             master = get_master(master_id)
             if not master:
-                self._send(404, {"ok": False, "error": "master not found"})
-                return
+                self._send(404, {"ok": False, "error": "master not found"}); return
 
             ticket = assign_ticket(ticket_id, master_id, master.get("name"))
 
-            # Уведомляем мастера — задача с кнопками
-            inline = {
-                "inline_keyboard": [[
-                    {"text": "✅ Выполнено", "callback_data": f"done:{ticket_id}"},
-                    {"text": "❌ Отменить", "callback_data": f"cancel:{ticket_id}"},
-                ]]
-            }
-            send_message(master["tg_id"], build_task_text(ticket), reply_markup=inline)
+            # Задача мастеру — через бот мастеров, с кнопками закрытия
+            inline = {"inline_keyboard": [[
+                {"text": "✅ Выполнено", "callback_data": f"done:{ticket_id}"},
+                {"text": "❌ Отменить", "callback_data": f"cancel:{ticket_id}"},
+            ]]}
+            try:
+                tg_send(TG_MASTER_BOT_TOKEN, master["tg_id"], build_task_text(ticket), inline)
+            except Exception as e:
+                print(f"master notify error: {e}")
 
-            # Уведомляем клиента
+            # Клиенту — через клиентский бот
             if ticket and ticket.get("client_tg_id"):
-                send_message(
-                    ticket["client_tg_id"],
-                    f"🔧 Вам назначен мастер: {master.get('name')}. Скоро свяжется с вами.",
-                )
+                try:
+                    tg_send(TG_BOT_TOKEN, ticket["client_tg_id"], f"🔧 Вам назначен мастер: {master.get('name')}. Скоро свяжется с вами.")
+                except Exception as e:
+                    print(f"client notify error: {e}")
 
             self._send(200, {"ok": True})
-
         except Exception as e:
             print(f"Error: {e}")
             self._send(500, {"ok": False, "error": "server error"})
