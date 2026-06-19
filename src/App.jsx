@@ -126,6 +126,7 @@ function App() {
 
   const changeStatus = (id, status) => postStatus({ id, status }, { status })
   const updateCategory = (id, category) => postStatus({ id, category }, { category })
+  const returnToPool = (id) => postStatus({ id, status: 'pool' }, { status: 'pool', assigned_master_name: null })
 
   const assignMaster = async (ticketId) => {
     const masterId = selected[ticketId]
@@ -242,7 +243,12 @@ function App() {
         )}
 
         {(ticket.status === 'done' || ticket.status === 'cancelled') && (
-          <button disabled={busy} onClick={() => changeStatus(ticket.id, 'in_progress')} style={btn('#fff', '#374151', '1px solid #d1d5db')}>Вернуть в работу</button>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {ticket.assigned_master_name && (
+              <button disabled={busy} onClick={() => changeStatus(ticket.id, 'in_progress')} style={btn('#fff', '#374151', '1px solid #d1d5db')}>Вернуть в работу</button>
+            )}
+            <button disabled={busy} onClick={() => returnToPool(ticket.id)} style={btn('#fff', '#9a3412', '1px solid #fdba74')}>Вернуть в пул</button>
+          </div>
         )}
       </div>
     )
