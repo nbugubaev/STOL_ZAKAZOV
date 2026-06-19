@@ -78,16 +78,32 @@ def upsert_master(tg_id, name, phone, specialization):
 
 
 def get_pool():
-    return db_get("tickets?status=eq.new&assigned_master_id=is.null&order=created_at.desc&limit=30&select=*")
+    return db_get("tickets?status=eq.pool&assigned_master_id=is.null&order=created_at.desc&limit=30&select=*")
 
 
 def get_my(master_id, status):
     return db_get(f"tickets?assigned_master_id=eq.{master_id}&status=eq.{status}&order=created_at.desc&limit=30&select=*")
 
 
+def fetch_moderator_ids():
+    return [r["tg_id"] for r in db_get("moderators?select=tg_id") if r.get("tg_id")]
+
+
+def notify_moderators(text):
+    try:
+        for mid in fetch_moderator_ids():
+            try:
+                requests.post(f"https://api.telegram.org/bot{TG_MASTER_BOT_TOKEN}/sendMessage",
+                              json={"chat_id": mid, "text": text}, timeout=10)
+            except Exception as e:
+                print(f"moderator notify error {mid}: {e}")
+    except Exception as e:
+        print(f"fetch moderators error: {e}")
+
+
 def take_ticket(ticket_id, master):
     # Условие защищает от того, что двое возьмут один заказ одновременно
-    url = f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&status=eq.new&assigned_master_id=is.null"
+    url = f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&status=eq.pool&assigned_master_id=is.null"
     headers = dict(DB_HEADERS)
     headers["Prefer"] = "return=representation"
     payload = {"assigned_master_id": master["id"], "assigned_master_name": master.get("name"), "status": "in_progress"}
@@ -102,6 +118,18 @@ def complete_ticket(ticket_id, master):
     headers = dict(DB_HEADERS)
     headers["Prefer"] = "return=representation"
     resp = requests.patch(url, headers=headers, json={"status": "done"}, timeout=10)
+    resp.raise_for_status()
+    rows = resp.json()
+    return rows[0] if rows else None
+
+
+def reject_ticket(ticket_id, master):
+    # Мастер отклоняет назначенную задачу — возвращаем модератору («Новая», без мастера)
+    url = f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&assigned_master_id=eq.{master['id']}"
+    headers = dict(DB_HEADERS)
+    headers["Prefer"] = "return=representation"
+    payload = {"status": "new", "assigned_master_id": None, "assigned_master_name": None}
+    resp = requests.patch(url, headers=headers, json=payload, timeout=10)
     resp.raise_for_status()
     rows = resp.json()
     return rows[0] if rows else None
@@ -166,11 +194,8 @@ class handler(BaseHTTPRequestHandler):
                 return
             tg_id = user["id"]
 
-            # Регистрация
+            # Регистрация (без кодового слова)
             if action == "register":
-                if not MASTER_CODE or (body.get("code") or "").strip() != MASTER_CODE:
-                    self._send(403, {"ok": False, "error": "bad code"})
-                    return
                 name = ((body.get("name") or "").strip()
                         or f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
                         or f"Мастер {tg_id}")
@@ -190,6 +215,11 @@ class handler(BaseHTTPRequestHandler):
                 row = complete_ticket(body.get("ticket_id"), master)
                 if row and row.get("client_tg_id"):
                     notify_client(row["client_tg_id"], "✅ Ваша заявка выполнена. Спасибо, что обратились!")
+            elif action == "reject":
+                row = reject_ticket(body.get("ticket_id"), master)
+                if row:
+                    desc = (row.get("metadata") or {}).get("description", "заявка")
+                    notify_moderators(f"↩️ Мастер {master.get('name')} отклонил заявку. Вернулась на распределение.\nПроблема: {desc}")
 
             self._send(200, cabinet_payload(master))
 
