@@ -69,6 +69,9 @@
         var b2 = el('<button class="btn">Выполнено</button>');
         b2.onclick = function () { doAction('complete', t.id, b2); };
         card.appendChild(b2);
+        var b3 = el('<button class="btn sec">Отклонить</button>');
+        b3.onclick = function () { if (confirm('Отклонить заявку? Она вернётся модератору.')) doAction('reject', t.id, b3); };
+        card.appendChild(b3);
       }
       return card;
     }
@@ -109,7 +112,6 @@
         '<label>Имя *<input id="r_name"></label>' +
         '<label>Телефон *<input id="r_phone" type="tel"></label>' +
         '<label>Специализация<input id="r_spec" placeholder="например, сантехник"></label>' +
-        '<label>Кодовое слово *<input id="r_code"></label>' +
         '<p class="err" id="r_err" style="display:none"></p>';
       app.appendChild(form);
       var b = el('<button class="btn">Зарегистрироваться</button>');
@@ -117,14 +119,13 @@
         var name = document.getElementById('r_name').value.trim();
         var phone = document.getElementById('r_phone').value.trim();
         var spec = document.getElementById('r_spec').value.trim();
-        var code = document.getElementById('r_code').value.trim();
         var err = document.getElementById('r_err');
-        if (!name || !phone || !code) { err.textContent = 'Заполните имя, телефон и кодовое слово.'; err.style.display = 'block'; return; }
+        if (!name || !phone) { err.textContent = 'Заполните имя и телефон.'; err.style.display = 'block'; return; }
         err.style.display = 'none'; b.disabled = true; b.textContent = '…';
         try {
-          renderCabinet(await api('register', { name: name, phone: phone, specialization: spec, code: code }));
+          renderCabinet(await api('register', { name: name, phone: phone, specialization: spec }));
         } catch (e) {
-          err.textContent = 'Неверное кодовое слово или ошибка. Попробуйте ещё раз.';
+          err.textContent = 'Не удалось зарегистрироваться. Попробуйте ещё раз.';
           err.style.display = 'block'; b.disabled = false; b.textContent = 'Зарегистрироваться';
         }
       };
