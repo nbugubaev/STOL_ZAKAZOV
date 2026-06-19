@@ -61,6 +61,7 @@ function App() {
   const [masters, setMasters] = useState([])
   const [selected, setSelected] = useState({})
   const [busyId, setBusyId] = useState(null)
+  const [manualMod, setManualMod] = useState(true)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true) })
@@ -71,7 +72,7 @@ function App() {
   useEffect(() => {
     if (!session) return
     supabase.realtime.setAuth(session.access_token)
-    fetchTickets(); fetchMasters()
+    fetchTickets(); fetchMasters(); fetchSetting()
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, (payload) => {
@@ -96,6 +97,18 @@ function App() {
     const { data, error } = await supabase.from('masters').select('id, name').order('name')
     if (data) setMasters(data)
     if (error) console.error('Ошибка загрузки мастеров:', error)
+  }
+
+  const fetchSetting = async () => {
+    const { data } = await supabase.from('settings').select('value').eq('key', 'manual_moderation')
+    if (data && data[0]) setManualMod(data[0].value !== 'false')
+  }
+
+  const toggleModeration = async () => {
+    const next = !manualMod
+    setManualMod(next)
+    const { error } = await supabase.from('settings').update({ value: next ? 'true' : 'false' }).eq('key', 'manual_moderation')
+    if (error) { alert('Не удалось сохранить настройку'); setManualMod(!next) }
   }
 
   const authHeaders = () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` })
@@ -248,8 +261,27 @@ function App() {
         </button>
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '12px', margin: '16px 0', fontSize: '13px', color: '#6b7280' }}>
-        Новая заявка сначала видна только вам. Поставьте категорию и либо назначьте мастера, либо отправьте «В общий пул» — тогда её увидят мастера и смогут взять.
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '12px 14px', margin: '16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: '13px', color: '#6b7280', flex: '1 1 320px' }}>
+          {manualMod
+            ? 'Ручная модерация включена: новые заявки приходят вам. Поставьте категорию и назначьте мастера или отправьте «В общий пул».'
+            : 'Ручная модерация выключена: новые заявки сразу попадают в общий пул и видны всем мастерам.'}
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none', flex: '0 0 auto' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: manualMod ? '#1e40af' : '#6b7280' }}>
+            Ручная модерация: {manualMod ? 'Вкл' : 'Выкл'}
+          </span>
+          <span onClick={toggleModeration} style={{
+            width: '46px', height: '26px', borderRadius: '9999px', position: 'relative',
+            backgroundColor: manualMod ? '#2563eb' : '#cbd5e1', transition: 'background-color .15s', display: 'inline-block',
+          }}>
+            <span style={{
+              position: 'absolute', top: '3px', left: manualMod ? '23px' : '3px',
+              width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#fff', transition: 'left .15s',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+            }} />
+          </span>
+        </label>
       </div>
 
       <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '8px', alignItems: 'flex-start' }}>
