@@ -44,10 +44,42 @@ DB_HEADERS = {
 }
 
 
-def insert_ticket(chat_id, form):
+def insert_ticket(chat_id, form, status="new"):
     headers = dict(DB_HEADERS); headers["Prefer"] = "return=minimal"
     requests.post(f"{SUPABASE_URL}/rest/v1/tickets", headers=headers,
-                  json={"client_tg_id": chat_id, "status": "new", "metadata": form}, timeout=10).raise_for_status()
+                  json={"client_tg_id": chat_id, "status": status, "metadata": form}, timeout=10).raise_for_status()
+
+
+def fetch_setting(key, default=None):
+    try:
+        resp = requests.get(f"{SUPABASE_URL}/rest/v1/settings?key=eq.{key}&select=value", headers=DB_HEADERS, timeout=10)
+        resp.raise_for_status()
+        rows = resp.json()
+        return rows[0]["value"] if rows else default
+    except Exception as e:
+        print(f"setting error: {e}")
+        return default
+
+
+def is_manual_moderation():
+    # По умолчанию ручная модерация включена (безопаснее)
+    return (fetch_setting("manual_moderation", "true") or "true").lower() != "false"
+
+
+def notify_masters_pool(form):
+    """Уведомляет всех мастеров о заявке, попавшей сразу в пул (авто-режим)."""
+    desc = (form.get("description") or "без описания").strip()
+    urgency = (form.get("urgency") or "").strip()
+    photo = (form.get("photo_url") or "").strip()
+    text = f"🆕 Новая заявка в пуле\nПроблема: {desc}"
+    if urgency: text += f"\nСрочность: {urgency}"
+    if photo: text += f"\n📷 Фото: {photo}"
+    markup = {"inline_keyboard": [[{"text": "🧰 Открыть кабинет", "web_app": {"url": CABINET_URL}}]]} if CABINET_URL else None
+    try:
+        for mid in fetch_master_ids():
+            safe_send(TG_MASTER_BOT_TOKEN, mid, text, reply_markup=markup)
+    except Exception as e:
+        print(f"pool notify error: {e}")
 
 
 def fetch_my_tickets(chat_id):
@@ -147,9 +179,12 @@ class handler(BaseHTTPRequestHandler):
                 chat_id = message["chat"]["id"]
                 if "web_app_data" in message:
                     form = json.loads(message["web_app_data"]["data"])
-                    insert_ticket(chat_id, form)
-                    notify_new_ticket(form)
-                    tg_send(TG_BOT_TOKEN, chat_id, "✅ Заявка принята! Передали модератору, скоро назначим мастера.", main_keyboard())
+                    manual = is_manual_moderation()
+                    insert_ticket(chat_id, form, "new" if manual else "pool")
+                    notify_new_ticket(form)            # модераторам — всегда
+                    if not manual:
+                        notify_masters_pool(form)      # авто-режим — сразу мастерам в пул
+                    tg_send(TG_BOT_TOKEN, chat_id, "✅ Заявка принята! Передали в обработку.", main_keyboard())
                 elif "text" in message:
                     text = message["text"]
                     if text in (BTN_INFO, "/info"):
