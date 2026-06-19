@@ -14,11 +14,28 @@ MODERATOR_IDS = [x.strip() for x in (os.environ.get("MODERATOR_CHAT_IDS") or "")
 
 BTN_NEW = "📝 Оставить заявку"
 BTN_MY = "📋 Мои заявки"
+BTN_INFO = "ℹ️ Как мы работаем"
 
 STATUS_LABELS = {
-    "new": "🟡 Новая", "in_progress": "🔵 В работе",
+    "new": "🟡 Новая", "pool": "🟡 В пуле", "in_progress": "🔵 В работе",
     "done": "🟢 Выполнена", "cancelled": "⚪ Отменена",
 }
+
+# Текст об условиях сервиса. Отредактируй под себя.
+INFO_TEXT = (
+    "ℹ️ Как мы работаем\n\n"
+    "1. Вы оставляете заявку через кнопку «📝 Оставить заявку».\n"
+    "2. Мастер приезжает на диагностику.\n"
+    "3. После диагностики называем точную стоимость ремонта.\n"
+    "4. По согласованию выполняем ремонт.\n\n"
+    "💰 Стоимость\n"
+    "• Диагностика — 15 000 ₸ (в пределах города).\n"
+    "• Ремонт — от 30 000 ₸, зависит от сложности.\n"
+    "• Точная стоимость — по итогам диагностики.\n\n"
+    "🛡 Гарантия\n"
+    "Гарантия на работы предоставляется в зависимости от типа оборудования и его состояния.\n\n"
+    "Создавая заявку, вы соглашаетесь с условиями сервиса."
+)
 
 DB_HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
@@ -45,6 +62,12 @@ def fetch_master_ids():
     return [r["tg_id"] for r in resp.json() if r.get("tg_id")]
 
 
+def fetch_moderator_ids():
+    resp = requests.get(f"{SUPABASE_URL}/rest/v1/moderators?select=tg_id", headers=DB_HEADERS, timeout=10)
+    resp.raise_for_status()
+    return [r["tg_id"] for r in resp.json() if r.get("tg_id")]
+
+
 def tg_send(token, chat_id, text, reply_markup=None):
     body = {"chat_id": chat_id, "text": text}
     if reply_markup:
@@ -60,32 +83,33 @@ def safe_send(token, chat_id, text, reply_markup=None):
 
 
 def main_keyboard():
-    return {"keyboard": [[{"text": BTN_NEW, "web_app": {"url": WEBAPP_URL}}], [{"text": BTN_MY}]], "resize_keyboard": True}
+    return {"keyboard": [
+        [{"text": BTN_NEW, "web_app": {"url": WEBAPP_URL}}],
+        [{"text": BTN_MY}, {"text": BTN_INFO}],
+    ], "resize_keyboard": True}
 
 
 def notify_new_ticket(form):
-    """Уведомляет персонал (модераторов и мастеров) через бот мастеров."""
+    """При создании заявка уходит ТОЛЬКО модераторам (мастера получат её при попадании в пул)."""
     desc = (form.get("description") or "без описания").strip()
     urgency = (form.get("urgency") or "").strip()
     name = (form.get("name") or "").strip()
     phone = (form.get("phone") or "").strip()
+    photo = (form.get("photo_url") or "").strip()
 
     mod_text = "🆕 Новая заявка\n"
     if name: mod_text += f"Клиент: {name}\n"
     if phone: mod_text += f"Телефон: {phone}\n"
     mod_text += f"Проблема: {desc}"
     if urgency: mod_text += f"\nСрочность: {urgency}"
-    for mid in MODERATOR_IDS:
-        safe_send(TG_MASTER_BOT_TOKEN, mid, mod_text)
-
-    master_text = f"🆕 Новая заявка в пуле\nПроблема: {desc}"
-    if urgency: master_text += f"\nСрочность: {urgency}"
-    markup = {"inline_keyboard": [[{"text": "🧰 Открыть кабинет", "web_app": {"url": CABINET_URL}}]]} if CABINET_URL else None
+    if photo: mod_text += f"\n📷 Фото: {photo}"
     try:
-        for mid in fetch_master_ids():
-            safe_send(TG_MASTER_BOT_TOKEN, mid, master_text, reply_markup=markup)
+        moderator_ids = fetch_moderator_ids() or MODERATOR_IDS
     except Exception as e:
-        print(f"fetch masters error: {e}")
+        print(f"fetch moderators error: {e}")
+        moderator_ids = MODERATOR_IDS
+    for mid in moderator_ids:
+        safe_send(TG_MASTER_BOT_TOKEN, mid, mod_text)
 
 
 def fmt_date(iso):
@@ -128,7 +152,9 @@ class handler(BaseHTTPRequestHandler):
                     tg_send(TG_BOT_TOKEN, chat_id, "✅ Заявка принята! Передали модератору, скоро назначим мастера.", main_keyboard())
                 elif "text" in message:
                     text = message["text"]
-                    if text in (BTN_MY, "/my"):
+                    if text in (BTN_INFO, "/info"):
+                        tg_send(TG_BOT_TOKEN, chat_id, INFO_TEXT, main_keyboard())
+                    elif text in (BTN_MY, "/my"):
                         tg_send(TG_BOT_TOKEN, chat_id, build_my_tickets_text(fetch_my_tickets(chat_id)), main_keyboard())
                     else:
                         tg_send(TG_BOT_TOKEN, chat_id, "Здравствуйте! Выберите действие на клавиатуре ниже.", main_keyboard())
