@@ -83,6 +83,39 @@ def notify_pool(ticket):
         print(f"fetch masters error: {e}")
 
 
+def fetch_master(master_id):
+    resp = requests.get(f"{SUPABASE_URL}/rest/v1/masters?id=eq.{master_id}&select=tg_id,name", headers=DB_HEADERS, timeout=10)
+    resp.raise_for_status()
+    rows = resp.json()
+    return rows[0] if rows else None
+
+
+def notify_master_task(ticket):
+    """Возврат в работу: если у заявки есть мастер — снова шлём ему задачу."""
+    mid = ticket.get("assigned_master_id")
+    if not mid:
+        return
+    m = fetch_master(mid)
+    if not m or not m.get("tg_id"):
+        return
+    meta = ticket.get("metadata") or {}
+    parts = ["🔄 Заявка снова в работе"]
+    if ticket.get("category"): parts.append(f"Категория: {ticket['category']}")
+    if meta.get("name"): parts.append(f"Клиент: {meta['name']}")
+    if meta.get("phone"): parts.append(f"Телефон: {meta['phone']}")
+    if meta.get("address"): parts.append(f"Адрес: {meta['address']}")
+    if meta.get("description"): parts.append(f"Проблема: {meta['description']}")
+    if meta.get("photo_url"): parts.append(f"📷 Фото: {meta['photo_url']}")
+    inline = {"inline_keyboard": [[
+        {"text": "✅ Выполнено", "callback_data": f"done:{ticket['id']}"},
+        {"text": "↩️ Отклонить", "callback_data": f"reject:{ticket['id']}"},
+    ]]}
+    try:
+        tg_send(TG_MASTER_BOT_TOKEN, m["tg_id"], "\n".join(parts), inline)
+    except Exception as e:
+        print(f"master re-notify error: {e}")
+
+
 class handler(BaseHTTPRequestHandler):
     def _send(self, code, payload):
         self.send_response(code)
@@ -116,6 +149,10 @@ class handler(BaseHTTPRequestHandler):
                 if status not in ALLOWED_STATUSES:
                     self._send(400, {"ok": False, "error": "bad status"}); return
                 fields["status"] = status
+                if status == "pool":
+                    # в пуле заявка без мастера — снимаем назначение
+                    fields["assigned_master_id"] = None
+                    fields["assigned_master_name"] = None
             if category is not None:
                 fields["category"] = category
             if not fields:
@@ -125,6 +162,13 @@ class handler(BaseHTTPRequestHandler):
 
             if status == "pool" and ticket:
                 notify_pool(ticket)
+            elif status == "in_progress" and ticket:
+                if ticket.get("client_tg_id"):
+                    try:
+                        tg_send(TG_BOT_TOKEN, ticket["client_tg_id"], CLIENT_MESSAGES["in_progress"])
+                    except Exception as e:
+                        print(f"client notify error: {e}")
+                notify_master_task(ticket)
             elif status in CLIENT_MESSAGES and ticket and ticket.get("client_tg_id"):
                 try:
                     tg_send(TG_BOT_TOKEN, ticket["client_tg_id"], CLIENT_MESSAGES[status])
