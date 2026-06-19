@@ -3,66 +3,84 @@ import json
 import requests
 from http.server import BaseHTTPRequestHandler
 
-# Переменные окружения из настроек Vercel.
 SUPABASE_URL = os.environ.get("VITE_SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
 SUPABASE_ANON_KEY = os.environ.get("VITE_SUPABASE_ANON_KEY")
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")                # клиентский бот
+TG_MASTER_BOT_TOKEN = os.environ.get("TG_MASTER_BOT_TOKEN")  # бот мастеров
+CABINET_URL = os.environ.get("CABINET_URL")
 
+ALLOWED_STATUSES = {"new", "pool", "in_progress", "done", "cancelled"}
 
-def is_authenticated(headers):
-    """Проверяет токен входа модератора через Supabase Auth."""
-    auth = headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return False
-    token = auth[7:]
-    try:
-        resp = requests.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_ANON_KEY},
-            timeout=10,
-        )
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-# Допустимые статусы
-ALLOWED_STATUSES = {"new", "in_progress", "done", "cancelled"}
-
-# Текст уведомления клиенту в зависимости от нового статуса.
-# Для "new" уведомление не шлём (это исходный статус).
 CLIENT_MESSAGES = {
     "in_progress": "🔧 Ваша заявка взята в работу. Скоро с вами свяжется мастер.",
     "done": "✅ Ваша заявка выполнена. Спасибо, что обратились!",
     "cancelled": "❌ Ваша заявка отменена. Если это ошибка — напишите нам ещё раз.",
 }
 
+DB_HEADERS = {
+    "apikey": SUPABASE_SERVICE_KEY,
+    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+    "Content-Type": "application/json",
+}
 
-def update_ticket_status(ticket_id, status):
-    """Меняет статус заявки и возвращает обновлённую строку."""
+
+def is_authenticated(headers):
+    auth = headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    token = auth[7:]
+    try:
+        resp = requests.get(f"{SUPABASE_URL}/auth/v1/user",
+                            headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_ANON_KEY}, timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def update_ticket(ticket_id, fields):
     url = f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}"
-    headers = {
-        "apikey": SUPABASE_SERVICE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",  # вернёт обновлённую строку
-    }
-    resp = requests.patch(url, headers=headers, json={"status": status}, timeout=10)
+    headers = dict(DB_HEADERS); headers["Prefer"] = "return=representation"
+    resp = requests.patch(url, headers=headers, json=fields, timeout=10)
     resp.raise_for_status()
     rows = resp.json()
     return rows[0] if rows else None
 
 
-def notify_client(chat_id, status):
-    """Шлёт клиенту сообщение в Telegram о новом статусе."""
-    text = CLIENT_MESSAGES.get(status)
-    if not text:
-        return
-    requests.post(
-        f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
-        json={"chat_id": chat_id, "text": text},
-        timeout=10,
-    )
+def fetch_master_ids():
+    resp = requests.get(f"{SUPABASE_URL}/rest/v1/masters?select=tg_id", headers=DB_HEADERS, timeout=10)
+    resp.raise_for_status()
+    return [r["tg_id"] for r in resp.json() if r.get("tg_id")]
+
+
+def tg_send(token, chat_id, text, reply_markup=None):
+    body = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        body["reply_markup"] = reply_markup
+    requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=body, timeout=10)
+
+
+def notify_pool(ticket):
+    """При отправке в общий пул уведомляем всех мастеров."""
+    meta = ticket.get("metadata") or {}
+    text = "🆕 Новая заявка в пуле"
+    if ticket.get("category"):
+        text += f"\nКатегория: {ticket['category']}"
+    if meta.get("description"):
+        text += f"\nПроблема: {meta['description']}"
+    if meta.get("urgency"):
+        text += f"\nСрочность: {meta['urgency']}"
+    if meta.get("photo_url"):
+        text += f"\n📷 Фото: {meta['photo_url']}"
+    markup = {"inline_keyboard": [[{"text": "🧰 Открыть кабинет", "web_app": {"url": CABINET_URL}}]]} if CABINET_URL else None
+    try:
+        for mid in fetch_master_ids():
+            try:
+                tg_send(TG_MASTER_BOT_TOKEN, mid, text, markup)
+            except Exception as e:
+                print(f"pool notify error {mid}: {e}")
+    except Exception as e:
+        print(f"fetch masters error: {e}")
 
 
 class handler(BaseHTTPRequestHandler):
@@ -74,7 +92,6 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(payload).encode("utf-8"))
 
     def do_OPTIONS(self):
-        # CORS preflight (на всякий случай)
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -84,23 +101,37 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             if not is_authenticated(self.headers):
-                self._send(401, {"ok": False, "error": "unauthorized"})
-                return
+                self._send(401, {"ok": False, "error": "unauthorized"}); return
             length = int(self.headers["Content-Length"])
             body = json.loads(self.rfile.read(length).decode("utf-8"))
             ticket_id = body.get("id")
             status = body.get("status")
+            category = body.get("category")
 
-            if not ticket_id or status not in ALLOWED_STATUSES:
-                self._send(400, {"ok": False, "error": "bad request"})
-                return
+            if not ticket_id:
+                self._send(400, {"ok": False, "error": "bad request"}); return
 
-            ticket = update_ticket_status(ticket_id, status)
-            if ticket and ticket.get("client_tg_id"):
-                notify_client(ticket["client_tg_id"], status)
+            fields = {}
+            if status is not None:
+                if status not in ALLOWED_STATUSES:
+                    self._send(400, {"ok": False, "error": "bad status"}); return
+                fields["status"] = status
+            if category is not None:
+                fields["category"] = category
+            if not fields:
+                self._send(400, {"ok": False, "error": "nothing to update"}); return
+
+            ticket = update_ticket(ticket_id, fields)
+
+            if status == "pool" and ticket:
+                notify_pool(ticket)
+            elif status in CLIENT_MESSAGES and ticket and ticket.get("client_tg_id"):
+                try:
+                    tg_send(TG_BOT_TOKEN, ticket["client_tg_id"], CLIENT_MESSAGES[status])
+                except Exception as e:
+                    print(f"client notify error: {e}")
 
             self._send(200, {"ok": True})
-
         except Exception as e:
             print(f"Error: {e}")
             self._send(500, {"ok": False, "error": "server error"})
