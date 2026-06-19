@@ -27,8 +27,7 @@
     }
     input[type="file"] { padding: 8px; }
     textarea { min-height: 90px; resize: vertical; }
-    .agree { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--hint); margin-bottom: 14px; }
-    .agree input { width: auto; margin: 2px 0 0; }
+    .notice { font-size: 12px; color: var(--hint); margin: 0 0 14px; line-height: 1.5; }
     .error { color: #dc2626; font-size: 14px; margin: 0 0 14px; }
     button.submit {
       width: 100%; padding: 14px; border-radius: 10px; border: none;
@@ -62,18 +61,15 @@
     <input id="photo" type="file" accept="image/*" />
   </label>
 
-  <div class="agree">
-    <input id="agree" type="checkbox" />
-    <label for="agree" style="margin:0;">Создавая заявку, я соглашаюсь с условиями сервиса (диагностика, ремонт, гарантия).</label>
-  </div>
+  <p class="notice">Создавая заявку, вы соглашаетесь с условиями сервиса (диагностика, ремонт, гарантия). Подробнее — кнопка «ℹ️ Как мы работаем» в боте.</p>
 
   <p class="error" id="error" style="display:none;"></p>
   <button class="submit" id="submitBtn" style="display:none;">Отправить заявку</button>
 
   <script>
     // ===== НАСТРОЙКА: подставь свои значения из Supabase (Settings -> API) =====
-    var SUPABASE_URL = "https://ВАШ-ПРОЕКТ.supabase.co";
-    var SUPABASE_ANON_KEY = "ВАШ_ANON_KEY";
+    var SUPABASE_URL = "https://acydjmxbwlmlanniqrol.supabase.co";
+    var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFjeWRqbXhid2xtbGFubmlxcm9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MTM3NjMsImV4cCI6MjA5NzE4OTc2M30._5fEzi54ExqGF3r6J48RHC9EpkASJeleXTxFlMpsbJo";
     // ========================================================================
 
     var tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
@@ -86,6 +82,9 @@
     }
 
     async function uploadPhoto(file) {
+      if (SUPABASE_URL.indexOf('ВАШ') !== -1 || SUPABASE_ANON_KEY.indexOf('ВАШ') !== -1) {
+        throw new Error('Supabase не настроен в форме (ключи не вписаны)');
+      }
       var ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       var path = 'ticket_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
       var res = await fetch(SUPABASE_URL + '/storage/v1/object/attachments/' + path, {
@@ -97,7 +96,10 @@
         },
         body: file
       });
-      if (!res.ok) throw new Error('Не удалось загрузить фото');
+      if (!res.ok) {
+        var t = await res.text().catch(function () { return ''; });
+        throw new Error('storage ' + res.status + ' ' + t.slice(0, 150));
+      }
       return SUPABASE_URL + '/storage/v1/object/public/attachments/' + path;
     }
 
@@ -112,9 +114,6 @@
       if (!f.name || !f.phone || !f.description) {
         showError('Заполните «Компания / Имя», телефон и описание проблемы.'); return;
       }
-      if (!document.getElementById('agree').checked) {
-        showError('Подтвердите согласие с условиями сервиса.'); return;
-      }
       showError('');
       if (inTelegram && tg.MainButton) tg.MainButton.showProgress();
 
@@ -124,9 +123,12 @@
           f.photo_url = await uploadPhoto(photoInput.files[0]);
         }
       } catch (e) {
+        console.error('Ошибка загрузки фото:', e);
         if (inTelegram && tg.MainButton) tg.MainButton.hideProgress();
-        showError('Фото не загрузилось. Попробуйте без фото или ещё раз.');
-        return;
+        var goWithout = confirm('Не удалось загрузить фото. Отправить заявку без фото?');
+        if (!goWithout) { showError('Отправка отменена. Попробуйте ещё раз.'); return; }
+        delete f.photo_url;
+        if (inTelegram && tg.MainButton) tg.MainButton.showProgress();
       }
 
       var payload = JSON.stringify(f);
