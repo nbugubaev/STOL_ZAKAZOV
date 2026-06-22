@@ -195,7 +195,7 @@ function App() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
           <span style={{ fontWeight: 'bold', color: '#374151', fontSize: '14px' }}>
-            {field(ticket, 'name') || `Клиент ${ticket.client_tg_id}`}
+            {ticket.ticket_no ? `№${ticket.ticket_no} · ` : ''}{field(ticket, 'name') || `Клиент ${ticket.client_tg_id}`}
           </span>
           {urgent && <span style={{ backgroundColor: '#fee2e2', color: '#991b1b', padding: '2px 6px', borderRadius: '6px', fontSize: '11px', fontWeight: 600 }}>СРОЧНО</span>}
         </div>
@@ -289,7 +289,7 @@ function App() {
     if (fTo) { const end = new Date(fTo); end.setHours(23, 59, 59, 999); if (new Date(t.created_at) > end) return false }
     if (fSearch.trim()) {
       const q = fSearch.trim().toLowerCase()
-      const hay = [t.id, field(t, 'name'), field(t, 'phone'), field(t, 'description'), t.assigned_master_name, t.category]
+      const hay = [t.id, t.ticket_no, field(t, 'name'), field(t, 'phone'), field(t, 'description'), t.assigned_master_name, t.category]
         .filter(Boolean).join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }
@@ -304,11 +304,12 @@ function App() {
   }
 
   const exportCsv = () => {
-    const head = ['Дата', 'ID', 'Заявитель', 'Телефон', 'Адрес', 'Категория', 'Статус', 'Мастер', 'Оценка', 'Описание']
+    const head = ['№', 'Дата', 'ID', 'Заявитель', 'Телефон', 'Адрес', 'Категория', 'Статус', 'Мастер', 'Оценка', 'Описание']
     const rows = [head]
     filtered.forEach((t) => {
       const r = reviews[t.id]
       rows.push([
+        t.ticket_no || '',
         new Date(t.created_at).toLocaleString('ru-RU'),
         t.id,
         field(t, 'name') || '',
@@ -365,6 +366,7 @@ function App() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '820px' }}>
           <thead>
             <tr style={{ background: '#f9fafb', textAlign: 'left', color: '#6b7280' }}>
+              <th style={{ padding: '10px' }}>№</th>
               <th style={{ padding: '10px' }}>Дата</th>
               <th style={{ padding: '10px' }}>ID</th>
               <th style={{ padding: '10px' }}>Заявитель</th>
@@ -380,6 +382,7 @@ function App() {
               const r = reviews[t.id]
               return (
                 <tr key={t.id} style={{ borderTop: '1px solid #e5e7eb' }}>
+                  <td style={{ padding: '10px', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap' }}>№{t.ticket_no || '—'}</td>
                   <td style={{ padding: '10px', whiteSpace: 'nowrap', color: '#6b7280' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
                   <td style={{ padding: '10px' }}>
                     <button onClick={() => copyId(t.id)} title={t.id}
