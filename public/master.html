@@ -60,7 +60,8 @@
       if (m.phone) meta += '📞 ' + esc(m.phone) + '<br>';
       if (m.address) meta += '📍 ' + esc(m.address) + '<br>';
       if (m.urgency) meta += 'Срочность: ' + esc(m.urgency) + '<br>';
-      var card = el('<div class="card"><div class="t">' + esc(m.description || 'Без описания') + '</div><div class="meta">' + meta + '</div></div>');
+      var no = t.ticket_no ? ('№' + t.ticket_no + ' · ') : '';
+      var card = el('<div class="card"><div class="t">' + no + esc(m.description || 'Без описания') + '</div><div class="meta">' + meta + '</div></div>');
       if (kind === 'pool') {
         var b = el('<button class="btn">Взять заказ</button>');
         b.onclick = function () { doAction('take', t.id, b); };
