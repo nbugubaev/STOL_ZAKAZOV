@@ -159,6 +159,7 @@ def review_markup(tid):
 def slim(t):
     return {
         "id": t.get("id"),
+        "ticket_no": t.get("ticket_no"),
         "status": t.get("status"),
         "created_at": t.get("created_at"),
         "metadata": t.get("metadata") or {},
