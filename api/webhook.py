@@ -44,6 +44,10 @@ DB_HEADERS = {
 }
 
 
+def no_label(no):
+    return f"№{int(no):04d}" if no else ""
+
+
 def insert_ticket(chat_id, form, status="new"):
     headers = dict(DB_HEADERS); headers["Prefer"] = "return=representation"
     resp = requests.post(f"{SUPABASE_URL}/rest/v1/tickets", headers=headers,
@@ -74,7 +78,7 @@ def notify_masters_pool(form, no=None):
     desc = (form.get("description") or "без описания").strip()
     urgency = (form.get("urgency") or "").strip()
     photo = (form.get("photo_url") or "").strip()
-    text = f"🆕 Новая заявка №{no} в пуле\nПроблема: {desc}" if no else f"🆕 Новая заявка в пуле\nПроблема: {desc}"
+    text = (f"🆕 Новая заявка {no_label(no)} в пуле\nПроблема: {desc}") if no else f"🆕 Новая заявка в пуле\nПроблема: {desc}"
     if urgency: text += f"\nСрочность: {urgency}"
     if photo: text += f"\n📷 Фото: {photo}"
     markup = {"inline_keyboard": [[{"text": "🧰 Открыть кабинет", "web_app": {"url": CABINET_URL}}]]} if CABINET_URL else None
@@ -132,7 +136,7 @@ def notify_new_ticket(form, no=None):
     phone = (form.get("phone") or "").strip()
     photo = (form.get("photo_url") or "").strip()
 
-    mod_text = f"🆕 Новая заявка №{no}\n" if no else "🆕 Новая заявка\n"
+    mod_text = (f"🆕 Новая заявка {no_label(no)}\n") if no else "🆕 Новая заявка\n"
     if name: mod_text += f"Клиент: {name}\n"
     if phone: mod_text += f"Телефон: {phone}\n"
     mod_text += f"Проблема: {desc}"
@@ -164,7 +168,7 @@ def build_my_tickets_text(tickets):
         desc = (meta.get("description") or "без описания").strip()
         if len(desc) > 100:
             desc = desc[:100] + "…"
-        block = f"{i}. №{t.get('ticket_no', '?')} · {status} · {fmt_date(t.get('created_at'))}\n{desc}"
+        block = f"{i}. {no_label(t.get('ticket_no')) or '№—'} · {status} · {fmt_date(t.get('created_at'))}\n{desc}"
         if t.get("assigned_master_name"):
             block += f"\nМастер: {t['assigned_master_name']}"
         blocks.append(block)
@@ -302,7 +306,7 @@ class handler(BaseHTTPRequestHandler):
                     notify_new_ticket(form, no)        # модераторам — всегда
                     if not manual:
                         notify_masters_pool(form, no)  # авто-режим — сразу мастерам в пул
-                    confirm = f"✅ Заявка №{no} принята! Передали в обработку.\n\nЕсли будут вопросы — назовите этот номер." if no else "✅ Заявка принята! Передали в обработку."
+                    confirm = (f"✅ Заявка {no_label(no)} принята! Передали в обработку.\n\nЕсли будут вопросы — назовите этот номер.") if no else "✅ Заявка принята! Передали в обработку."
                     tg_send(TG_BOT_TOKEN, chat_id, confirm, main_keyboard())
                 elif "text" in message:
                     text = message["text"]
