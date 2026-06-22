@@ -96,12 +96,49 @@
       app.appendChild(el('<div class="profile"><div class="t">' + esc(p.name || '') + '</div><div class="meta">'
         + (p.specialization ? esc(p.specialization) + '<br>' : '')
         + (p.phone ? '📞 ' + esc(p.phone) : '') + '</div></div>'));
+      var edit = el('<button class="btn sec">Изменить данные</button>');
+      edit.onclick = function () { renderEditProfile(p); };
+      app.appendChild(edit);
       var refresh = el('<button class="btn sec">Обновить</button>');
       refresh.onclick = load;
       app.appendChild(refresh);
       section('Доступные заказы', data.pool, 'pool', 'Свободных заказов нет.');
       section('Мои активные', data.active, 'active', 'Активных заказов нет.');
       section('Выполненные', data.done, 'done', 'Пока ничего.');
+    }
+
+    function renderEditProfile(p) {
+      app.innerHTML = '';
+      app.appendChild(el('<h2>Изменить данные</h2>'));
+      var form = el('<div></div>');
+      form.innerHTML =
+        '<label>Имя *<input id="e_name"></label>' +
+        '<label>Телефон *<input id="e_phone" type="tel"></label>' +
+        '<label>Специализация<input id="e_spec" placeholder="например, сантехник"></label>' +
+        '<p class="err" id="e_err" style="display:none"></p>';
+      app.appendChild(form);
+      document.getElementById('e_name').value = p.name || '';
+      document.getElementById('e_phone').value = p.phone || '';
+      document.getElementById('e_spec').value = p.specialization || '';
+      var save = el('<button class="btn">Сохранить</button>');
+      save.onclick = async function () {
+        var name = document.getElementById('e_name').value.trim();
+        var phone = document.getElementById('e_phone').value.trim();
+        var spec = document.getElementById('e_spec').value.trim();
+        var err = document.getElementById('e_err');
+        if (!name || !phone) { err.textContent = 'Заполните имя и телефон.'; err.style.display = 'block'; return; }
+        err.style.display = 'none'; save.disabled = true; save.textContent = '…';
+        try {
+          renderCabinet(await api('update_profile', { name: name, phone: phone, specialization: spec }));
+        } catch (e) {
+          err.textContent = 'Не удалось сохранить. Попробуйте ещё раз.';
+          err.style.display = 'block'; save.disabled = false; save.textContent = 'Сохранить';
+        }
+      };
+      app.appendChild(save);
+      var cancel = el('<button class="btn sec">Отмена</button>');
+      cancel.onclick = load;
+      app.appendChild(cancel);
     }
 
     function renderRegister() {
