@@ -18,6 +18,18 @@ CLIENT_MESSAGES = {
     "cancelled": "❌ Ваша заявка отменена. Если это ошибка — напишите нам ещё раз.",
 }
 
+DONE_TEXT = "✅ Ваша заявка выполнена. Спасибо, что обратились!\n\nОцените работу мастера 👇"
+
+
+def review_markup(tid):
+    return {"inline_keyboard": [[
+        {"text": "1⭐", "callback_data": f"rate:{tid}:1"},
+        {"text": "2⭐", "callback_data": f"rate:{tid}:2"},
+        {"text": "3⭐", "callback_data": f"rate:{tid}:3"},
+        {"text": "4⭐", "callback_data": f"rate:{tid}:4"},
+        {"text": "5⭐", "callback_data": f"rate:{tid}:5"},
+    ]]}
+
 DB_HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
     "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
@@ -169,6 +181,11 @@ class handler(BaseHTTPRequestHandler):
                     except Exception as e:
                         print(f"client notify error: {e}")
                 notify_master_task(ticket)
+            elif status == "done" and ticket and ticket.get("client_tg_id"):
+                try:
+                    tg_send(TG_BOT_TOKEN, ticket["client_tg_id"], DONE_TEXT, review_markup(ticket_id))
+                except Exception as e:
+                    print(f"client notify error: {e}")
             elif status in CLIENT_MESSAGES and ticket and ticket.get("client_tg_id"):
                 try:
                     tg_send(TG_BOT_TOKEN, ticket["client_tg_id"], CLIENT_MESSAGES[status])
