@@ -63,6 +63,13 @@ function App() {
   const [busyId, setBusyId] = useState(null)
   const [manualMod, setManualMod] = useState(true)
   const [reviews, setReviews] = useState({})
+  const [view, setView] = useState('kanban')
+  const [fSearch, setFSearch] = useState('')
+  const [fStatus, setFStatus] = useState('all')
+  const [fMaster, setFMaster] = useState('all')
+  const [fFrom, setFFrom] = useState('')
+  const [fTo, setFTo] = useState('')
+  const [copiedId, setCopiedId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true) })
@@ -274,39 +281,175 @@ function App() {
   if (!authReady) return <div style={{ padding: '40px', fontFamily: 'system-ui, sans-serif', color: '#6b7280' }}>Загрузка…</div>
   if (!session) return <Login />
 
+  const filtered = tickets.filter((t) => {
+    if (fStatus !== 'all' && t.status !== fStatus) return false
+    if (fMaster === 'none' && t.assigned_master_id) return false
+    if (fMaster !== 'all' && fMaster !== 'none' && t.assigned_master_id !== fMaster) return false
+    if (fFrom && new Date(t.created_at) < new Date(fFrom)) return false
+    if (fTo) { const end = new Date(fTo); end.setHours(23, 59, 59, 999); if (new Date(t.created_at) > end) return false }
+    if (fSearch.trim()) {
+      const q = fSearch.trim().toLowerCase()
+      const hay = [t.id, field(t, 'name'), field(t, 'phone'), field(t, 'description'), t.assigned_master_name, t.category]
+        .filter(Boolean).join(' ').toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+
+  const resetFilters = () => { setFSearch(''); setFStatus('all'); setFMaster('all'); setFFrom(''); setFTo('') }
+
+  const copyId = (id) => {
+    if (navigator.clipboard) navigator.clipboard.writeText(id)
+    setCopiedId(id); setTimeout(() => setCopiedId(null), 1200)
+  }
+
+  const exportCsv = () => {
+    const head = ['Дата', 'ID', 'Заявитель', 'Телефон', 'Адрес', 'Категория', 'Статус', 'Мастер', 'Оценка', 'Описание']
+    const rows = [head]
+    filtered.forEach((t) => {
+      const r = reviews[t.id]
+      rows.push([
+        new Date(t.created_at).toLocaleString('ru-RU'),
+        t.id,
+        field(t, 'name') || '',
+        field(t, 'phone') || '',
+        field(t, 'address') || '',
+        t.category || '',
+        STATUS[t.status]?.label || t.status,
+        t.assigned_master_name || '',
+        r ? r.rating : '',
+        (field(t, 'description') || '').replace(/\n/g, ' '),
+      ])
+    })
+    const csv = rows.map((row) => row.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'zayavki.csv'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const tabBtn = (key, label) => (
+    <button onClick={() => setView(key)} style={{
+      padding: '9px 16px', borderRadius: '8px', border: '1px solid ' + (view === key ? '#2563eb' : '#d1d5db'),
+      background: view === key ? '#2563eb' : '#fff', color: view === key ? '#fff' : '#374151',
+      fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+    }}>{label}</button>
+  )
+
+  const inputStyle = { padding: '8px 10px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '13px' }
+
+  const renderAllTable = () => (
+    <div>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '12px' }}>
+        <input placeholder="Поиск: ID, имя, телефон, текст…" value={fSearch} onChange={(e) => setFSearch(e.target.value)}
+          style={{ ...inputStyle, flex: '1 1 240px', minWidth: '200px' }} />
+        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} style={inputStyle}>
+          <option value="all">Все статусы</option>
+          {Object.keys(STATUS).map((k) => (<option key={k} value={k}>{STATUS[k].label}</option>))}
+        </select>
+        <select value={fMaster} onChange={(e) => setFMaster(e.target.value)} style={inputStyle}>
+          <option value="all">Все мастера</option>
+          <option value="none">Без мастера</option>
+          {masters.map((m) => (<option key={m.id} value={m.id}>{m.name}</option>))}
+        </select>
+        <label style={{ fontSize: '12px', color: '#6b7280' }}>с <input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} style={inputStyle} /></label>
+        <label style={{ fontSize: '12px', color: '#6b7280' }}>по <input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} style={inputStyle} /></label>
+        <button onClick={resetFilters} style={{ ...inputStyle, cursor: 'pointer', background: '#fff', color: '#6b7280' }}>Сбросить</button>
+        <button onClick={exportCsv} style={{ ...inputStyle, cursor: 'pointer', background: '#111827', color: '#fff', border: 'none' }}>Экспорт CSV</button>
+      </div>
+
+      <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>Найдено: {filtered.length}</div>
+
+      <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '10px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '820px' }}>
+          <thead>
+            <tr style={{ background: '#f9fafb', textAlign: 'left', color: '#6b7280' }}>
+              <th style={{ padding: '10px' }}>Дата</th>
+              <th style={{ padding: '10px' }}>ID</th>
+              <th style={{ padding: '10px' }}>Заявитель</th>
+              <th style={{ padding: '10px' }}>Категория</th>
+              <th style={{ padding: '10px' }}>Статус</th>
+              <th style={{ padding: '10px' }}>Мастер</th>
+              <th style={{ padding: '10px' }}>Оценка</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((t) => {
+              const s = STATUS[t.status] || {}
+              const r = reviews[t.id]
+              return (
+                <tr key={t.id} style={{ borderTop: '1px solid #e5e7eb' }}>
+                  <td style={{ padding: '10px', whiteSpace: 'nowrap', color: '#6b7280' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
+                  <td style={{ padding: '10px' }}>
+                    <button onClick={() => copyId(t.id)} title={t.id}
+                      style={{ fontFamily: 'monospace', fontSize: '12px', border: '1px solid #e5e7eb', background: '#fff', borderRadius: '6px', padding: '3px 6px', cursor: 'pointer', color: '#374151' }}>
+                      {copiedId === t.id ? 'скопировано ✓' : (t.id.slice(0, 8) + '…')}
+                    </button>
+                  </td>
+                  <td style={{ padding: '10px' }}>
+                    <div style={{ color: '#111827' }}>{field(t, 'name') || `Клиент ${t.client_tg_id}`}</div>
+                    {field(t, 'phone') && <div style={{ color: '#6b7280', fontSize: '12px' }}>{field(t, 'phone')}</div>}
+                  </td>
+                  <td style={{ padding: '10px', color: '#374151' }}>{t.category || '—'}</td>
+                  <td style={{ padding: '10px' }}>
+                    <span style={{ backgroundColor: s.bg, color: s.color, padding: '2px 8px', borderRadius: '9999px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' }}>{s.dot} {s.label}</span>
+                  </td>
+                  <td style={{ padding: '10px', color: '#374151' }}>{t.assigned_master_name || '—'}</td>
+                  <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>{r ? '⭐'.repeat(r.rating) : '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {filtered.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>Ничего не найдено</div>}
+      </div>
+    </div>
+  )
+
   return (
     <div style={{ padding: '20px', fontFamily: 'system-ui, sans-serif', maxWidth: '1300px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ color: '#111827', margin: 0 }}>Канбан Модератора 🛠</h1>
+        <h1 style={{ color: '#111827', margin: 0 }}>Модератор 🛠</h1>
         <button onClick={() => supabase.auth.signOut()}
           style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', color: '#6b7280', fontSize: '13px', cursor: 'pointer' }}>
           Выйти
         </button>
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '12px 14px', margin: '16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '13px', color: '#6b7280', flex: '1 1 320px' }}>
-          {manualMod
-            ? 'Ручная модерация включена: новые заявки приходят вам. Поставьте категорию и назначьте мастера или отправьте «В общий пул».'
-            : 'Ручная модерация выключена: новые заявки сразу попадают в общий пул и видны всем мастерам.'}
-        </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none', flex: '0 0 auto' }}>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: manualMod ? '#1e40af' : '#6b7280' }}>
-            Ручная модерация: {manualMod ? 'Вкл' : 'Выкл'}
-          </span>
-          <span onClick={toggleModeration} style={{
-            width: '46px', height: '26px', borderRadius: '9999px', position: 'relative',
-            backgroundColor: manualMod ? '#2563eb' : '#cbd5e1', transition: 'background-color .15s', display: 'inline-block',
-          }}>
-            <span style={{
-              position: 'absolute', top: '3px', left: manualMod ? '23px' : '3px',
-              width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#fff', transition: 'left .15s',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
-            }} />
-          </span>
-        </label>
+      <div style={{ display: 'flex', gap: '8px', margin: '16px 0 0' }}>
+        {tabBtn('kanban', 'Канбан')}
+        {tabBtn('all', 'Все заявки')}
       </div>
 
+      {view === 'kanban' && (
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '12px 14px', margin: '16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '13px', color: '#6b7280', flex: '1 1 320px' }}>
+            {manualMod
+              ? 'Ручная модерация включена: новые заявки приходят вам. Поставьте категорию и назначьте мастера или отправьте «В общий пул».'
+              : 'Ручная модерация выключена: новые заявки сразу попадают в общий пул и видны всем мастерам.'}
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none', flex: '0 0 auto' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: manualMod ? '#1e40af' : '#6b7280' }}>
+              Ручная модерация: {manualMod ? 'Вкл' : 'Выкл'}
+            </span>
+            <span onClick={toggleModeration} style={{
+              width: '46px', height: '26px', borderRadius: '9999px', position: 'relative',
+              backgroundColor: manualMod ? '#2563eb' : '#cbd5e1', transition: 'background-color .15s', display: 'inline-block',
+            }}>
+              <span style={{
+                position: 'absolute', top: '3px', left: manualMod ? '23px' : '3px',
+                width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#fff', transition: 'left .15s',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+              }} />
+            </span>
+          </label>
+        </div>
+      )}
+
+      {view === 'all' && <div style={{ margin: '16px 0' }}>{renderAllTable()}</div>}
+
+      {view === 'kanban' && (
       <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '8px', alignItems: 'flex-start' }}>
         {COLUMNS.map((col) => {
           const s = STATUS[col.key]
@@ -324,6 +467,7 @@ function App() {
           )
         })}
       </div>
+      )}
     </div>
   )
 }
