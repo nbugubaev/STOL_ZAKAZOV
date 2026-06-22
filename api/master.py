@@ -236,6 +236,12 @@ class handler(BaseHTTPRequestHandler):
                 if row:
                     desc = (row.get("metadata") or {}).get("description", "заявка")
                     notify_moderators(f"↩️ Мастер {master.get('name')} отклонил заявку. Вернулась на распределение.\nПроблема: {desc}")
+            elif action == "update_profile":
+                new_name = (body.get("name") or "").strip() or master.get("name")
+                new_phone = (body.get("phone") or "").strip()
+                new_spec = (body.get("specialization") or "").strip()
+                upsert_master(tg_id, new_name, new_phone, new_spec)
+                master = get_master_by_tg(tg_id)
 
             self._send(200, cabinet_payload(master))
 
