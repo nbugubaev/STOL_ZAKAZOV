@@ -45,9 +45,12 @@ DB_HEADERS = {
 
 
 def insert_ticket(chat_id, form, status="new"):
-    headers = dict(DB_HEADERS); headers["Prefer"] = "return=minimal"
-    requests.post(f"{SUPABASE_URL}/rest/v1/tickets", headers=headers,
-                  json={"client_tg_id": chat_id, "status": status, "metadata": form}, timeout=10).raise_for_status()
+    headers = dict(DB_HEADERS); headers["Prefer"] = "return=representation"
+    resp = requests.post(f"{SUPABASE_URL}/rest/v1/tickets", headers=headers,
+                         json={"client_tg_id": chat_id, "status": status, "metadata": form}, timeout=10)
+    resp.raise_for_status()
+    rows = resp.json()
+    return rows[0] if rows else None
 
 
 def fetch_setting(key, default=None):
@@ -66,12 +69,12 @@ def is_manual_moderation():
     return (fetch_setting("manual_moderation", "true") or "true").lower() != "false"
 
 
-def notify_masters_pool(form):
+def notify_masters_pool(form, no=None):
     """Уведомляет всех мастеров о заявке, попавшей сразу в пул (авто-режим)."""
     desc = (form.get("description") or "без описания").strip()
     urgency = (form.get("urgency") or "").strip()
     photo = (form.get("photo_url") or "").strip()
-    text = f"🆕 Новая заявка в пуле\nПроблема: {desc}"
+    text = f"🆕 Новая заявка №{no} в пуле\nПроблема: {desc}" if no else f"🆕 Новая заявка в пуле\nПроблема: {desc}"
     if urgency: text += f"\nСрочность: {urgency}"
     if photo: text += f"\n📷 Фото: {photo}"
     markup = {"inline_keyboard": [[{"text": "🧰 Открыть кабинет", "web_app": {"url": CABINET_URL}}]]} if CABINET_URL else None
@@ -121,7 +124,7 @@ def main_keyboard():
     ], "resize_keyboard": True}
 
 
-def notify_new_ticket(form):
+def notify_new_ticket(form, no=None):
     """При создании заявка уходит ТОЛЬКО модераторам (мастера получат её при попадании в пул)."""
     desc = (form.get("description") or "без описания").strip()
     urgency = (form.get("urgency") or "").strip()
@@ -129,7 +132,7 @@ def notify_new_ticket(form):
     phone = (form.get("phone") or "").strip()
     photo = (form.get("photo_url") or "").strip()
 
-    mod_text = "🆕 Новая заявка\n"
+    mod_text = f"🆕 Новая заявка №{no}\n" if no else "🆕 Новая заявка\n"
     if name: mod_text += f"Клиент: {name}\n"
     if phone: mod_text += f"Телефон: {phone}\n"
     mod_text += f"Проблема: {desc}"
@@ -161,7 +164,7 @@ def build_my_tickets_text(tickets):
         desc = (meta.get("description") or "без описания").strip()
         if len(desc) > 100:
             desc = desc[:100] + "…"
-        block = f"{i}. {status} · {fmt_date(t.get('created_at'))}\n{desc}"
+        block = f"{i}. №{t.get('ticket_no', '?')} · {status} · {fmt_date(t.get('created_at'))}\n{desc}"
         if t.get("assigned_master_name"):
             block += f"\nМастер: {t['assigned_master_name']}"
         blocks.append(block)
@@ -294,11 +297,13 @@ class handler(BaseHTTPRequestHandler):
                 if "web_app_data" in message:
                     form = json.loads(message["web_app_data"]["data"])
                     manual = is_manual_moderation()
-                    insert_ticket(chat_id, form, "new" if manual else "pool")
-                    notify_new_ticket(form)            # модераторам — всегда
+                    ticket = insert_ticket(chat_id, form, "new" if manual else "pool")
+                    no = ticket.get("ticket_no") if ticket else None
+                    notify_new_ticket(form, no)        # модераторам — всегда
                     if not manual:
-                        notify_masters_pool(form)      # авто-режим — сразу мастерам в пул
-                    tg_send(TG_BOT_TOKEN, chat_id, "✅ Заявка принята! Передали в обработку.", main_keyboard())
+                        notify_masters_pool(form, no)  # авто-режим — сразу мастерам в пул
+                    confirm = f"✅ Заявка №{no} принята! Передали в обработку.\n\nЕсли будут вопросы — назовите этот номер." if no else "✅ Заявка принята! Передали в обработку."
+                    tg_send(TG_BOT_TOKEN, chat_id, confirm, main_keyboard())
                 elif "text" in message:
                     text = message["text"]
                     if text in (BTN_INFO, "/info"):
