@@ -48,6 +48,22 @@ def no_label(no):
     return f"№{int(no):04d}" if no else ""
 
 
+def upsert_client(chat_id, form):
+    """Авто-профиль клиента: сохраняем непустые поля, чтобы подставлять в будущие заявки."""
+    payload = {"tg_id": chat_id}
+    name = (form.get("name") or "").strip()
+    phone = (form.get("phone") or "").strip()
+    address = (form.get("address") or "").strip()
+    if name: payload["name"] = name
+    if phone: payload["phone"] = phone
+    if address: payload["address"] = address
+    headers = dict(DB_HEADERS); headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+    try:
+        requests.post(f"{SUPABASE_URL}/rest/v1/clients?on_conflict=tg_id", headers=headers, json=payload, timeout=10)
+    except Exception as e:
+        print(f"upsert client error: {e}")
+
+
 def insert_ticket(chat_id, form, status="new"):
     headers = dict(DB_HEADERS); headers["Prefer"] = "return=representation"
     resp = requests.post(f"{SUPABASE_URL}/rest/v1/tickets", headers=headers,
@@ -302,6 +318,7 @@ class handler(BaseHTTPRequestHandler):
                     form = json.loads(message["web_app_data"]["data"])
                     manual = is_manual_moderation()
                     ticket = insert_ticket(chat_id, form, "new" if manual else "pool")
+                    upsert_client(chat_id, form)
                     no = ticket.get("ticket_no") if ticket else None
                     notify_new_ticket(form, no)        # модераторам — всегда
                     if not manual:
