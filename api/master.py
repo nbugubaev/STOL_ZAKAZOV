@@ -135,12 +135,25 @@ def reject_ticket(ticket_id, master):
     return rows[0] if rows else None
 
 
-def notify_client(chat_id, text):
+def notify_client(chat_id, text, reply_markup=None):
+    body = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        body["reply_markup"] = reply_markup
     requests.post(
         f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
-        json={"chat_id": chat_id, "text": text},
+        json=body,
         timeout=10,
     )
+
+
+def review_markup(tid):
+    return {"inline_keyboard": [[
+        {"text": "1⭐", "callback_data": f"rate:{tid}:1"},
+        {"text": "2⭐", "callback_data": f"rate:{tid}:2"},
+        {"text": "3⭐", "callback_data": f"rate:{tid}:3"},
+        {"text": "4⭐", "callback_data": f"rate:{tid}:4"},
+        {"text": "5⭐", "callback_data": f"rate:{tid}:5"},
+    ]]}
 
 
 def slim(t):
@@ -214,7 +227,9 @@ class handler(BaseHTTPRequestHandler):
             elif action == "complete":
                 row = complete_ticket(body.get("ticket_id"), master)
                 if row and row.get("client_tg_id"):
-                    notify_client(row["client_tg_id"], "✅ Ваша заявка выполнена. Спасибо, что обратились!")
+                    notify_client(row["client_tg_id"],
+                                  "✅ Ваша заявка выполнена. Спасибо, что обратились!\n\nОцените работу мастера 👇",
+                                  review_markup(row["id"]))
             elif action == "reject":
                 row = reject_ticket(body.get("ticket_id"), master)
                 if row:
