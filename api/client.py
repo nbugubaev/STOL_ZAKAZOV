@@ -55,6 +55,12 @@ def get_client(tg_id):
     return rows[0] if rows else None
 
 
+def save_client(tg_id, name, phone, address):
+    headers = dict(DB_HEADERS); headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+    payload = {"tg_id": tg_id, "name": name, "phone": phone, "address": address}
+    requests.post(f"{SUPABASE_URL}/rest/v1/clients?on_conflict=tg_id", headers=headers, json=payload, timeout=10).raise_for_status()
+
+
 class handler(BaseHTTPRequestHandler):
     def _send(self, code, payload):
         self.send_response(code)
@@ -77,6 +83,18 @@ class handler(BaseHTTPRequestHandler):
             user = verify_init_data(body.get("init_data"))
             if not user or not user.get("id"):
                 self._send(401, {"ok": False, "error": "unauthorized"}); return
+
+            if body.get("action") == "save":
+                name = (body.get("name") or "").strip()
+                phone = (body.get("phone") or "").strip()
+                address = (body.get("address") or "").strip()
+                if not name or not phone:
+                    self._send(400, {"ok": False, "error": "name/phone required"}); return
+                try:
+                    save_client(user["id"], name, phone, address)
+                except Exception as e:
+                    print(f"save client error: {e}")
+                    self._send(500, {"ok": False, "error": "save failed"}); return
 
             profile = None
             try:
