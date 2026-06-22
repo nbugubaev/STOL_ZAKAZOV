@@ -62,6 +62,7 @@ function App() {
   const [selected, setSelected] = useState({})
   const [busyId, setBusyId] = useState(null)
   const [manualMod, setManualMod] = useState(true)
+  const [reviews, setReviews] = useState({})
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true) })
@@ -72,7 +73,7 @@ function App() {
   useEffect(() => {
     if (!session) return
     supabase.realtime.setAuth(session.access_token)
-    fetchTickets(); fetchMasters(); fetchSetting()
+    fetchTickets(); fetchMasters(); fetchSetting(); fetchReviews()
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, (payload) => {
@@ -102,6 +103,15 @@ function App() {
   const fetchSetting = async () => {
     const { data } = await supabase.from('settings').select('value').eq('key', 'manual_moderation')
     if (data && data[0]) setManualMod(data[0].value !== 'false')
+  }
+
+  const fetchReviews = async () => {
+    const { data } = await supabase.from('reviews').select('*')
+    if (data) {
+      const map = {}
+      data.forEach((r) => { map[r.ticket_id] = r })
+      setReviews(map)
+    }
   }
 
   const toggleModeration = async () => {
@@ -208,6 +218,13 @@ function App() {
         <div style={{ fontSize: '11px', color: '#9ca3af', margin: '6px 0' }}>
           {new Date(ticket.created_at).toLocaleString('ru-RU')}
         </div>
+
+        {reviews[ticket.id] && (
+          <div style={{ marginBottom: '8px', padding: '8px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '13px' }}>
+            <div style={{ fontWeight: 600, color: '#92400e' }}>Отзыв: {'⭐'.repeat(reviews[ticket.id].rating || 0)} ({reviews[ticket.id].rating}/5)</div>
+            {reviews[ticket.id].comment && <div style={{ color: '#78350f', marginTop: '3px' }}>«{reviews[ticket.id].comment}»</div>}
+          </div>
+        )}
 
         {/* Категория — для новых и в пуле */}
         {(ticket.status === 'new' || ticket.status === 'pool') && (
