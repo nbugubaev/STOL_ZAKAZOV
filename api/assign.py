@@ -57,7 +57,7 @@ def tg_send(token, chat_id, text, reply_markup=None):
 
 def build_task_text(ticket):
     meta = ticket.get("metadata") or {}
-    parts = ["🛠 Новая задача"]
+    parts = [f"🛠 Новая задача №{ticket.get('ticket_no')}" if ticket.get("ticket_no") else "🛠 Новая задача"]
     if ticket.get("category"): parts.append(f"Категория: {ticket['category']}")
     if meta.get("name"): parts.append(f"Клиент: {meta['name']}")
     if meta.get("phone"): parts.append(f"Телефон: {meta['phone']}")
