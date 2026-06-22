@@ -7,6 +7,8 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 const field = (t, k) => t.metadata?.[k]
 
+const noLabel = (n) => (n ? '№' + String(n).padStart(4, '0') : '—')
+
 const CATEGORIES = ['Электрика', 'Механика', 'Сантехника', 'Определить на месте']
 
 const STATUS = {
@@ -195,7 +197,7 @@ function App() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
           <span style={{ fontWeight: 'bold', color: '#374151', fontSize: '14px' }}>
-            {ticket.ticket_no ? `№${ticket.ticket_no} · ` : ''}{field(ticket, 'name') || `Клиент ${ticket.client_tg_id}`}
+            {ticket.ticket_no ? `${noLabel(ticket.ticket_no)} · ` : ''}{field(ticket, 'name') || `Клиент ${ticket.client_tg_id}`}
           </span>
           {urgent && <span style={{ backgroundColor: '#fee2e2', color: '#991b1b', padding: '2px 6px', borderRadius: '6px', fontSize: '11px', fontWeight: 600 }}>СРОЧНО</span>}
         </div>
@@ -382,7 +384,7 @@ function App() {
               const r = reviews[t.id]
               return (
                 <tr key={t.id} style={{ borderTop: '1px solid #e5e7eb' }}>
-                  <td style={{ padding: '10px', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap' }}>№{t.ticket_no || '—'}</td>
+                  <td style={{ padding: '10px', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap' }}>{noLabel(t.ticket_no)}</td>
                   <td style={{ padding: '10px', whiteSpace: 'nowrap', color: '#6b7280' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
                   <td style={{ padding: '10px' }}>
                     <button onClick={() => copyId(t.id)} title={t.id}
