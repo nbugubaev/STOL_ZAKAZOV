@@ -75,7 +75,7 @@ def tg_send(token, chat_id, text, reply_markup=None):
 def notify_pool(ticket):
     """При отправке в общий пул уведомляем всех мастеров."""
     meta = ticket.get("metadata") or {}
-    text = f"🆕 Новая заявка №{ticket.get('ticket_no')} в пуле" if ticket.get("ticket_no") else "🆕 Новая заявка в пуле"
+    text = f"🆕 Новая заявка №{int(ticket['ticket_no']):04d} в пуле" if ticket.get("ticket_no") else "🆕 Новая заявка в пуле"
     if ticket.get("category"):
         text += f"\nКатегория: {ticket['category']}"
     if meta.get("description"):
@@ -111,7 +111,7 @@ def notify_master_task(ticket):
     if not m or not m.get("tg_id"):
         return
     meta = ticket.get("metadata") or {}
-    parts = [f"🔄 Заявка №{ticket.get('ticket_no')} снова в работе" if ticket.get("ticket_no") else "🔄 Заявка снова в работе"]
+    parts = [f"🔄 Заявка №{int(ticket['ticket_no']):04d} снова в работе" if ticket.get("ticket_no") else "🔄 Заявка снова в работе"]
     if ticket.get("category"): parts.append(f"Категория: {ticket['category']}")
     if meta.get("name"): parts.append(f"Клиент: {meta['name']}")
     if meta.get("phone"): parts.append(f"Телефон: {meta['phone']}")
