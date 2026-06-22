@@ -14,6 +14,18 @@ CLIENT_STATUS_MESSAGES = {
     "cancelled": "❌ Ваша заявка отменена. Если это ошибка — напишите нам ещё раз.",
 }
 
+DONE_TEXT = "✅ Ваша заявка выполнена. Спасибо, что обратились!\n\nОцените работу мастера 👇"
+
+
+def review_markup(tid):
+    return {"inline_keyboard": [[
+        {"text": "1⭐", "callback_data": f"rate:{tid}:1"},
+        {"text": "2⭐", "callback_data": f"rate:{tid}:2"},
+        {"text": "3⭐", "callback_data": f"rate:{tid}:3"},
+        {"text": "4⭐", "callback_data": f"rate:{tid}:4"},
+        {"text": "5⭐", "callback_data": f"rate:{tid}:5"},
+    ]]}
+
 DB_HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
     "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
@@ -84,7 +96,7 @@ def handle_callback(cq):
     if action == "done":
         row = patch_ticket(ticket_id, {"status": "done"})
         if row and row.get("client_tg_id"):
-            tg_send(TG_BOT_TOKEN, row["client_tg_id"], CLIENT_STATUS_MESSAGES["done"])
+            tg_send(TG_BOT_TOKEN, row["client_tg_id"], DONE_TEXT, review_markup(ticket_id))
         answer_callback(cq_id, "Готово")
         edit_task_message(cq, "\n\n✅ Заявка закрыта (выполнена)")
 
