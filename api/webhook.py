@@ -15,6 +15,8 @@ MODERATOR_IDS = [x.strip() for x in (os.environ.get("MODERATOR_CHAT_IDS") or "")
 BTN_NEW = "📝 Оставить заявку"
 BTN_MY = "📋 Мои заявки"
 BTN_INFO = "ℹ️ Как мы работаем"
+BTN_PROFILE = "👤 Мои данные"
+PROFILE_URL = os.environ.get("PROFILE_URL") or ((WEBAPP_URL or "").replace("form.html", "profile.html") or None)
 
 STATUS_LABELS = {
     "new": "🟡 Новая", "pool": "🟡 В пуле", "in_progress": "🔵 В работе",
@@ -138,10 +140,13 @@ def safe_send(token, chat_id, text, reply_markup=None):
 
 
 def main_keyboard():
-    return {"keyboard": [
+    rows = [
         [{"text": BTN_NEW, "web_app": {"url": WEBAPP_URL}}],
         [{"text": BTN_MY}, {"text": BTN_INFO}],
-    ], "resize_keyboard": True}
+    ]
+    if PROFILE_URL:
+        rows.append([{"text": BTN_PROFILE, "web_app": {"url": PROFILE_URL}}])
+    return {"keyboard": rows, "resize_keyboard": True}
 
 
 def notify_new_ticket(form, no=None):
