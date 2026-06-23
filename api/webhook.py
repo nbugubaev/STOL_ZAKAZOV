@@ -145,8 +145,16 @@ def main_keyboard():
         [{"text": BTN_MY}, {"text": BTN_INFO}],
     ]
     if PROFILE_URL:
-        rows.append([{"text": BTN_PROFILE, "web_app": {"url": PROFILE_URL}}])
+        rows.append([{"text": BTN_PROFILE}])
     return {"keyboard": rows, "resize_keyboard": True}
+
+
+def send_profile_button(chat_id):
+    if not PROFILE_URL:
+        tg_send(TG_BOT_TOKEN, chat_id, "Профиль временно недоступен.")
+        return
+    markup = {"inline_keyboard": [[{"text": "👤 Открыть мои данные", "web_app": {"url": PROFILE_URL}}]]}
+    tg_send(TG_BOT_TOKEN, chat_id, "Здесь можно сохранить контактные данные — они подставятся в новую заявку.", markup)
 
 
 def notify_new_ticket(form, no=None):
@@ -334,6 +342,8 @@ class handler(BaseHTTPRequestHandler):
                     text = message["text"]
                     if text in (BTN_INFO, "/info"):
                         tg_send(TG_BOT_TOKEN, chat_id, INFO_TEXT, main_keyboard())
+                    elif text in (BTN_PROFILE, "/profile"):
+                        send_profile_button(chat_id)
                     elif text in (BTN_MY, "/my"):
                         tg_send(TG_BOT_TOKEN, chat_id, build_my_tickets_text(fetch_my_tickets(chat_id)), main_keyboard())
                     elif try_capture_comment(chat_id, text):
