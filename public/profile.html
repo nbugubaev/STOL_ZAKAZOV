@@ -49,8 +49,9 @@
 
   <script>
     var tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
-    var inTelegram = !!(tg && tg.initData !== undefined);
-    if (inTelegram) { tg.ready(); tg.expand(); }
+    if (tg) { tg.ready(); tg.expand(); }
+    var hasUser = !!(tg && tg.initDataUnsafe && tg.initDataUnsafe.user);
+    var inTelegram = !!(tg && (tg.initData || hasUser));
 
     function show(id, on) { document.getElementById(id).style.display = on ? 'block' : 'none'; }
     function msg(kind, text) {
@@ -91,14 +92,14 @@
     }
 
     async function init() {
-      if (!inTelegram || !tg.initData) {
+      if (!tg) {
         document.getElementById('loading').textContent = 'Откройте эту страницу через бота в Telegram.';
         return;
       }
       try {
         var data = await api('load');
         fill(data.profile);
-      } catch (e) { /* профиль ещё пуст — это нормально */ }
+      } catch (e) { /* профиль ещё пуст или подпись не пришла — покажем пустую форму */ }
       show('loading', false); show('form', true);
       document.getElementById('saveBtn').addEventListener('click', save);
     }
