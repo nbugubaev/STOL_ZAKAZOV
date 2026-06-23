@@ -65,8 +65,13 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({ action: action, init_data: tg ? tg.initData : '' }, extra || {}))
       });
-      if (!res.ok) throw new Error('Ошибка сервера (' + res.status + ')');
-      return res.json();
+      var data = null;
+      try { data = await res.json(); } catch (e) {}
+      if (!res.ok) {
+        var em = (data && data.error) ? data.error : ('HTTP ' + res.status);
+        throw new Error('(' + res.status + ') ' + em);
+      }
+      return data;
     }
 
     function fill(p) {
@@ -81,12 +86,13 @@
       var phone = document.getElementById('phone').value.trim();
       var address = document.getElementById('address').value.trim();
       if (!name || !phone) { msg('error', 'Заполните Компания / Имя и телефон.'); return; }
+      if (tg && !tg.initData) { msg('error', 'Telegram не передал данные авторизации (initData пуст). Откройте через инлайн-кнопку «Открыть мои данные».'); return; }
       msg(null); var b = document.getElementById('saveBtn'); b.disabled = true; b.textContent = '…';
       try {
         await api('save', { name: name, phone: phone, address: address });
         msg('ok'); b.textContent = 'Сохранить'; b.disabled = false;
       } catch (e) {
-        msg('error', 'Не удалось сохранить. Попробуйте ещё раз.');
+        msg('error', 'Не удалось сохранить: ' + e.message);
         b.textContent = 'Сохранить'; b.disabled = false;
       }
     }
