@@ -91,15 +91,19 @@
       // приложение закроется автоматически, бот пришлёт подтверждение в чат
     }
 
+    function getParam(k) { try { return new URLSearchParams(window.location.search).get(k) || ''; } catch (e) { return ''; } }
+
     async function init() {
       if (!tg) {
         document.getElementById('loading').textContent = 'Откройте эту страницу через бота в Telegram.';
         return;
       }
-      try {
-        var data = await api('load');
-        fill(data.profile);
-      } catch (e) { /* профиль ещё пуст или подпись не пришла — покажем пустую форму */ }
+      var pn = getParam('name'), pp = getParam('phone'), pa = getParam('address');
+      if (pn || pp || pa) {
+        fill({ name: pn, phone: pp, address: pa });
+      } else {
+        try { var data = await api('load'); fill(data.profile); } catch (e) { /* пусто — это нормально */ }
+      }
       show('loading', false); show('form', true);
       document.getElementById('saveBtn').addEventListener('click', save);
     }
