@@ -40,6 +40,9 @@
     <label>Адрес
       <input id="address" placeholder="Улица, дом, квартира" />
     </label>
+    <label>Ссылка 2ГИС
+      <input id="gis" placeholder="https://2gis.../...  (необязательно)" />
+    </label>
     <p class="ok" id="ok" style="display:none;">Сохранено ✓</p>
     <p class="error" id="error" style="display:none;"></p>
     <button class="submit" id="saveBtn">Сохранить</button>
@@ -79,15 +82,17 @@
       if (p.name) document.getElementById('name').value = p.name;
       if (p.phone) document.getElementById('phone').value = p.phone;
       if (p.address) document.getElementById('address').value = p.address;
+      if (p.gis_url) document.getElementById('gis').value = p.gis_url;
     }
 
     async function save() {
       var name = document.getElementById('name').value.trim();
       var phone = document.getElementById('phone').value.trim();
       var address = document.getElementById('address').value.trim();
+      var gis = document.getElementById('gis').value.trim();
       if (!name || !phone) { msg('error', 'Заполните Компания / Имя и телефон.'); return; }
       if (!tg || !tg.sendData) { msg('error', 'Откройте страницу через кнопку «Мои данные» в боте.'); return; }
-      tg.sendData(JSON.stringify({ type: 'profile', name: name, phone: phone, address: address }));
+      tg.sendData(JSON.stringify({ type: 'profile', name: name, phone: phone, address: address, gis_url: gis }));
       // приложение закроется автоматически, бот пришлёт подтверждение в чат
     }
 
@@ -98,9 +103,9 @@
         document.getElementById('loading').textContent = 'Откройте эту страницу через бота в Telegram.';
         return;
       }
-      var pn = getParam('name'), pp = getParam('phone'), pa = getParam('address');
-      if (pn || pp || pa) {
-        fill({ name: pn, phone: pp, address: pa });
+      var pn = getParam('name'), pp = getParam('phone'), pa = getParam('address'), pg = getParam('gis');
+      if (pn || pp || pa || pg) {
+        fill({ name: pn, phone: pp, address: pa, gis_url: pg });
       } else {
         try { var data = await api('load'); fill(data.profile); } catch (e) { /* пусто — это нормально */ }
       }
