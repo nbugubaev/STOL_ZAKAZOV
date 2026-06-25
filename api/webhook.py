@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+from urllib.parse import urlencode
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 
@@ -141,13 +142,38 @@ def safe_send(token, chat_id, text, reply_markup=None):
         print(f"send error to {chat_id}: {e}")
 
 
-def main_keyboard():
+def fetch_client(chat_id):
+    try:
+        resp = requests.get(f"{SUPABASE_URL}/rest/v1/clients?tg_id=eq.{chat_id}&select=name,phone,address", headers=DB_HEADERS, timeout=10)
+        resp.raise_for_status()
+        rows = resp.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f"fetch client error: {e}")
+        return None
+
+
+def with_params(url, profile):
+    if not url or not profile:
+        return url
+    q = {}
+    if profile.get("name"): q["name"] = profile["name"]
+    if profile.get("phone"): q["phone"] = profile["phone"]
+    if profile.get("address"): q["address"] = profile["address"]
+    if not q:
+        return url
+    sep = "&" if "?" in url else "?"
+    return url + sep + urlencode(q)
+
+
+def main_keyboard(chat_id=None):
+    profile = fetch_client(chat_id) if chat_id else None
     rows = [
-        [{"text": BTN_NEW, "web_app": {"url": WEBAPP_URL}}],
+        [{"text": BTN_NEW, "web_app": {"url": with_params(WEBAPP_URL, profile)}}],
         [{"text": BTN_MY}, {"text": BTN_INFO}],
     ]
     if PROFILE_URL:
-        rows.append([{"text": BTN_PROFILE, "web_app": {"url": PROFILE_URL}}])
+        rows.append([{"text": BTN_PROFILE, "web_app": {"url": with_params(PROFILE_URL, profile)}}])
     return {"keyboard": rows, "resize_keyboard": True}
 
 
@@ -297,7 +323,7 @@ def try_capture_comment(chat_id, text):
     except Exception as e:
         print(f"set comment error: {e}")
         return False
-    tg_send(TG_BOT_TOKEN, chat_id, "Спасибо за отзыв! 🙏", main_keyboard())
+    tg_send(TG_BOT_TOKEN, chat_id, "Спасибо за отзыв! 🙏", main_keyboard(chat_id))
     if rev.get("master_id"):
         try:
             m = fetch_master(rev["master_id"])
@@ -327,7 +353,7 @@ class handler(BaseHTTPRequestHandler):
                         ok = upsert_client(chat_id, data)
                         tg_send(TG_BOT_TOKEN, chat_id,
                                 "✅ Данные сохранены — подставим их в новую заявку." if ok else "⚠️ Не удалось сохранить данные. Попробуйте позже.",
-                                main_keyboard())
+                                main_keyboard(chat_id))
                     else:
                         manual = is_manual_moderation()
                         ticket = insert_ticket(chat_id, data, "new" if manual else "pool")
@@ -337,17 +363,17 @@ class handler(BaseHTTPRequestHandler):
                         if not manual:
                             notify_masters_pool(data, no)  # авто-режим — сразу мастерам в пул
                         confirm = (f"✅ Заявка {no_label(no)} принята! Передали в обработку.\n\nЕсли будут вопросы — назовите этот номер.") if no else "✅ Заявка принята! Передали в обработку."
-                        tg_send(TG_BOT_TOKEN, chat_id, confirm, main_keyboard())
+                        tg_send(TG_BOT_TOKEN, chat_id, confirm, main_keyboard(chat_id))
                 elif "text" in message:
                     text = message["text"]
                     if text in (BTN_INFO, "/info"):
-                        tg_send(TG_BOT_TOKEN, chat_id, INFO_TEXT, main_keyboard())
+                        tg_send(TG_BOT_TOKEN, chat_id, INFO_TEXT, main_keyboard(chat_id))
                     elif text in (BTN_MY, "/my"):
-                        tg_send(TG_BOT_TOKEN, chat_id, build_my_tickets_text(fetch_my_tickets(chat_id)), main_keyboard())
+                        tg_send(TG_BOT_TOKEN, chat_id, build_my_tickets_text(fetch_my_tickets(chat_id)), main_keyboard(chat_id))
                     elif try_capture_comment(chat_id, text):
                         pass
                     else:
-                        tg_send(TG_BOT_TOKEN, chat_id, "Здравствуйте! Выберите действие на клавиатуре ниже.", main_keyboard())
+                        tg_send(TG_BOT_TOKEN, chat_id, "Здравствуйте! Выберите действие на клавиатуре ниже.", main_keyboard(chat_id))
 
             self.send_response(200); self.send_header('Content-type', 'text/plain'); self.end_headers()
             self.wfile.write(b"OK")
