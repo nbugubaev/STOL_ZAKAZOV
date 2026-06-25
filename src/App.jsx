@@ -215,6 +215,7 @@ function App() {
         <div style={{ fontSize: '12px', color: '#4b5563', lineHeight: 1.6 }}>
           {field(ticket, 'phone') && <div>📞 {field(ticket, 'phone')}</div>}
           {field(ticket, 'address') && <div>📍 {field(ticket, 'address')}</div>}
+          {field(ticket, 'gis_url') && <div>🗺 <a href={field(ticket, 'gis_url')} target="_blank" rel="noreferrer">2ГИС</a></div>}
           {ticket.assigned_master_name && <div>👷 {ticket.assigned_master_name}</div>}
         </div>
 
@@ -395,6 +396,7 @@ function App() {
                   <td style={{ padding: '10px' }}>
                     <div style={{ color: '#111827' }}>{field(t, 'name') || `Клиент ${t.client_tg_id}`}</div>
                     {field(t, 'phone') && <div style={{ color: '#6b7280', fontSize: '12px' }}>{field(t, 'phone')}</div>}
+                    {field(t, 'gis_url') && <div style={{ fontSize: '12px' }}><a href={field(t, 'gis_url')} target="_blank" rel="noreferrer">🗺 2ГИС</a></div>}
                   </td>
                   <td style={{ padding: '10px', color: '#374151' }}>{t.category || '—'}</td>
                   <td style={{ padding: '10px' }}>
