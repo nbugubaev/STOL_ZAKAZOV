@@ -158,13 +158,24 @@
       } catch (e) { console.error('profile load error', e); }
     }
 
+    function getParam(k) { try { return new URLSearchParams(window.location.search).get(k) || ''; } catch (e) { return ''; } }
+
+    function prefillFromParams() {
+      var pn = getParam('name'), pp = getParam('phone'), pa = getParam('address');
+      if (pn) document.getElementById('name').value = pn;
+      if (pp) document.getElementById('phone').value = pp;
+      if (pa) document.getElementById('address').value = pa;
+      return !!(pn || pp || pa);
+    }
+
     if (inTelegram) {
       tg.ready(); tg.expand();
       tg.MainButton.setText('Отправить заявку');
       tg.MainButton.show();
       tg.MainButton.onClick(submit);
-      loadProfile();
+      if (!prefillFromParams()) loadProfile();
     } else {
+      prefillFromParams();
       var btn = document.getElementById('submitBtn');
       btn.style.display = 'block';
       btn.addEventListener('click', submit);
