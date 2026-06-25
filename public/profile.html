@@ -86,15 +86,9 @@
       var phone = document.getElementById('phone').value.trim();
       var address = document.getElementById('address').value.trim();
       if (!name || !phone) { msg('error', 'Заполните Компания / Имя и телефон.'); return; }
-      if (tg && !tg.initData) { msg('error', 'Telegram не передал данные авторизации (initData пуст). Откройте через инлайн-кнопку «Открыть мои данные».'); return; }
-      msg(null); var b = document.getElementById('saveBtn'); b.disabled = true; b.textContent = '…';
-      try {
-        await api('save', { name: name, phone: phone, address: address });
-        msg('ok'); b.textContent = 'Сохранить'; b.disabled = false;
-      } catch (e) {
-        msg('error', 'Не удалось сохранить: ' + e.message);
-        b.textContent = 'Сохранить'; b.disabled = false;
-      }
+      if (!tg || !tg.sendData) { msg('error', 'Откройте страницу через кнопку «Мои данные» в боте.'); return; }
+      tg.sendData(JSON.stringify({ type: 'profile', name: name, phone: phone, address: address }));
+      // приложение закроется автоматически, бот пришлёт подтверждение в чат
     }
 
     async function init() {
