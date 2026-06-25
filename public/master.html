@@ -59,6 +59,7 @@
       if (m.name) meta += 'Клиент: ' + esc(m.name) + '<br>';
       if (m.phone) meta += '📞 ' + esc(m.phone) + '<br>';
       if (m.address) meta += '📍 ' + esc(m.address) + '<br>';
+      if (m.gis_url) meta += '🗺 <a href="' + esc(m.gis_url) + '" target="_blank">2ГИС</a><br>';
       if (m.urgency) meta += 'Срочность: ' + esc(m.urgency) + '<br>';
       var no = t.ticket_no ? ('№' + String(t.ticket_no).padStart(4, '0') + ' · ') : '';
       var card = el('<div class="card"><div class="t">' + no + esc(m.description || 'Без описания') + '</div><div class="meta">' + meta + '</div></div>');
