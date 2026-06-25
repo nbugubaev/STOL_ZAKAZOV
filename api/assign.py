@@ -62,6 +62,7 @@ def build_task_text(ticket):
     if meta.get("name"): parts.append(f"Клиент: {meta['name']}")
     if meta.get("phone"): parts.append(f"Телефон: {meta['phone']}")
     if meta.get("address"): parts.append(f"Адрес: {meta['address']}")
+    if meta.get("gis_url"): parts.append(f"🗺 2ГИС: {meta['gis_url']}")
     if meta.get("urgency"): parts.append(f"Срочность: {meta['urgency']}")
     if meta.get("description"): parts.append(f"Проблема: {meta['description']}")
     if meta.get("photo_url"): parts.append(f"📷 Фото: {meta['photo_url']}")
