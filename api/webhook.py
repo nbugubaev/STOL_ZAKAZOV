@@ -57,9 +57,11 @@ def upsert_client(chat_id, form):
     name = (form.get("name") or "").strip()
     phone = (form.get("phone") or "").strip()
     address = (form.get("address") or "").strip()
+    gis = (form.get("gis_url") or "").strip()
     if name: payload["name"] = name
     if phone: payload["phone"] = phone
     if address: payload["address"] = address
+    if gis: payload["gis_url"] = gis
     headers = dict(DB_HEADERS); headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
     try:
         requests.post(f"{SUPABASE_URL}/rest/v1/clients?on_conflict=tg_id", headers=headers, json=payload, timeout=10).raise_for_status()
@@ -100,6 +102,10 @@ def notify_masters_pool(form, no=None):
     urgency = (form.get("urgency") or "").strip()
     photo = (form.get("photo_url") or "").strip()
     text = (f"🆕 Новая заявка {no_label(no)} в пуле\nПроблема: {desc}") if no else f"🆕 Новая заявка в пуле\nПроблема: {desc}"
+    address = (form.get("address") or "").strip()
+    gis = (form.get("gis_url") or "").strip()
+    if address: text += f"\nАдрес: {address}"
+    if gis: text += f"\n🗺 2ГИС: {gis}"
     if urgency: text += f"\nСрочность: {urgency}"
     if photo: text += f"\n📷 Фото: {photo}"
     markup = {"inline_keyboard": [[{"text": "🧰 Открыть кабинет", "web_app": {"url": CABINET_URL}}]]} if CABINET_URL else None
@@ -144,7 +150,7 @@ def safe_send(token, chat_id, text, reply_markup=None):
 
 def fetch_client(chat_id):
     try:
-        resp = requests.get(f"{SUPABASE_URL}/rest/v1/clients?tg_id=eq.{chat_id}&select=name,phone,address", headers=DB_HEADERS, timeout=10)
+        resp = requests.get(f"{SUPABASE_URL}/rest/v1/clients?tg_id=eq.{chat_id}&select=name,phone,address,gis_url", headers=DB_HEADERS, timeout=10)
         resp.raise_for_status()
         rows = resp.json()
         return rows[0] if rows else None
@@ -160,6 +166,7 @@ def with_params(url, profile):
     if profile.get("name"): q["name"] = profile["name"]
     if profile.get("phone"): q["phone"] = profile["phone"]
     if profile.get("address"): q["address"] = profile["address"]
+    if profile.get("gis_url"): q["gis"] = profile["gis_url"]
     if not q:
         return url
     sep = "&" if "?" in url else "?"
@@ -188,6 +195,10 @@ def notify_new_ticket(form, no=None):
     mod_text = (f"🆕 Новая заявка {no_label(no)}\n") if no else "🆕 Новая заявка\n"
     if name: mod_text += f"Клиент: {name}\n"
     if phone: mod_text += f"Телефон: {phone}\n"
+    address = (form.get("address") or "").strip()
+    gis = (form.get("gis_url") or "").strip()
+    if address: mod_text += f"Адрес: {address}\n"
+    if gis: mod_text += f"🗺 2ГИС: {gis}\n"
     mod_text += f"Проблема: {desc}"
     if urgency: mod_text += f"\nСрочность: {urgency}"
     if photo: mod_text += f"\n📷 Фото: {photo}"
