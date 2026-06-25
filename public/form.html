@@ -48,6 +48,9 @@
   <label>Адрес
     <input id="address" placeholder="Улица, дом, квартира" />
   </label>
+  <label>Ссылка 2ГИС
+    <input id="gis" placeholder="https://2gis.../...  (необязательно)" />
+  </label>
   <label>Срочность
     <select id="urgency">
       <option>Обычная</option>
@@ -108,6 +111,7 @@
         name: document.getElementById('name').value.trim(),
         phone: document.getElementById('phone').value.trim(),
         address: document.getElementById('address').value.trim(),
+        gis_url: document.getElementById('gis').value.trim(),
         urgency: document.getElementById('urgency').value,
         description: document.getElementById('description').value.trim()
       };
@@ -154,6 +158,7 @@
           if (p.name) document.getElementById('name').value = p.name;
           if (p.phone) document.getElementById('phone').value = p.phone;
           if (p.address) document.getElementById('address').value = p.address;
+          if (p.gis_url) document.getElementById('gis').value = p.gis_url;
         }
       } catch (e) { console.error('profile load error', e); }
     }
@@ -161,11 +166,12 @@
     function getParam(k) { try { return new URLSearchParams(window.location.search).get(k) || ''; } catch (e) { return ''; } }
 
     function prefillFromParams() {
-      var pn = getParam('name'), pp = getParam('phone'), pa = getParam('address');
+      var pn = getParam('name'), pp = getParam('phone'), pa = getParam('address'), pg = getParam('gis');
       if (pn) document.getElementById('name').value = pn;
       if (pp) document.getElementById('phone').value = pp;
       if (pa) document.getElementById('address').value = pa;
-      return !!(pn || pp || pa);
+      if (pg) document.getElementById('gis').value = pg;
+      return !!(pn || pp || pa || pg);
     }
 
     if (inTelegram) {
