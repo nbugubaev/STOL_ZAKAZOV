@@ -61,9 +61,11 @@ def upsert_client(chat_id, form):
     if address: payload["address"] = address
     headers = dict(DB_HEADERS); headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
     try:
-        requests.post(f"{SUPABASE_URL}/rest/v1/clients?on_conflict=tg_id", headers=headers, json=payload, timeout=10)
+        requests.post(f"{SUPABASE_URL}/rest/v1/clients?on_conflict=tg_id", headers=headers, json=payload, timeout=10).raise_for_status()
+        return True
     except Exception as e:
         print(f"upsert client error: {e}")
+        return False
 
 
 def insert_ticket(chat_id, form, status="new"):
@@ -145,16 +147,8 @@ def main_keyboard():
         [{"text": BTN_MY}, {"text": BTN_INFO}],
     ]
     if PROFILE_URL:
-        rows.append([{"text": BTN_PROFILE}])
+        rows.append([{"text": BTN_PROFILE, "web_app": {"url": PROFILE_URL}}])
     return {"keyboard": rows, "resize_keyboard": True}
-
-
-def send_profile_button(chat_id):
-    if not PROFILE_URL:
-        tg_send(TG_BOT_TOKEN, chat_id, "Профиль временно недоступен.")
-        return
-    markup = {"inline_keyboard": [[{"text": "👤 Открыть мои данные", "web_app": {"url": PROFILE_URL}}]]}
-    tg_send(TG_BOT_TOKEN, chat_id, "Здесь можно сохранить контактные данные — они подставятся в новую заявку.", markup)
 
 
 def notify_new_ticket(form, no=None):
@@ -328,22 +322,26 @@ class handler(BaseHTTPRequestHandler):
             if message:
                 chat_id = message["chat"]["id"]
                 if "web_app_data" in message:
-                    form = json.loads(message["web_app_data"]["data"])
-                    manual = is_manual_moderation()
-                    ticket = insert_ticket(chat_id, form, "new" if manual else "pool")
-                    upsert_client(chat_id, form)
-                    no = ticket.get("ticket_no") if ticket else None
-                    notify_new_ticket(form, no)        # модераторам — всегда
-                    if not manual:
-                        notify_masters_pool(form, no)  # авто-режим — сразу мастерам в пул
-                    confirm = (f"✅ Заявка {no_label(no)} принята! Передали в обработку.\n\nЕсли будут вопросы — назовите этот номер.") if no else "✅ Заявка принята! Передали в обработку."
-                    tg_send(TG_BOT_TOKEN, chat_id, confirm, main_keyboard())
+                    data = json.loads(message["web_app_data"]["data"])
+                    if data.get("type") == "profile":
+                        ok = upsert_client(chat_id, data)
+                        tg_send(TG_BOT_TOKEN, chat_id,
+                                "✅ Данные сохранены — подставим их в новую заявку." if ok else "⚠️ Не удалось сохранить данные. Попробуйте позже.",
+                                main_keyboard())
+                    else:
+                        manual = is_manual_moderation()
+                        ticket = insert_ticket(chat_id, data, "new" if manual else "pool")
+                        upsert_client(chat_id, data)
+                        no = ticket.get("ticket_no") if ticket else None
+                        notify_new_ticket(data, no)        # модераторам — всегда
+                        if not manual:
+                            notify_masters_pool(data, no)  # авто-режим — сразу мастерам в пул
+                        confirm = (f"✅ Заявка {no_label(no)} принята! Передали в обработку.\n\nЕсли будут вопросы — назовите этот номер.") if no else "✅ Заявка принята! Передали в обработку."
+                        tg_send(TG_BOT_TOKEN, chat_id, confirm, main_keyboard())
                 elif "text" in message:
                     text = message["text"]
                     if text in (BTN_INFO, "/info"):
                         tg_send(TG_BOT_TOKEN, chat_id, INFO_TEXT, main_keyboard())
-                    elif text in (BTN_PROFILE, "/profile"):
-                        send_profile_button(chat_id)
                     elif text in (BTN_MY, "/my"):
                         tg_send(TG_BOT_TOKEN, chat_id, build_my_tickets_text(fetch_my_tickets(chat_id)), main_keyboard())
                     elif try_capture_comment(chat_id, text):
