@@ -12,6 +12,9 @@ TG_MASTER_BOT_TOKEN = os.environ.get("TG_MASTER_BOT_TOKEN")  # бот масте
 WEBAPP_URL = os.environ.get("WEBAPP_URL")                    # форма клиента
 CABINET_URL = os.environ.get("CABINET_URL")                  # кабинет мастера (кнопка в уведомлении мастерам)
 MODERATOR_IDS = [x.strip() for x in (os.environ.get("MODERATOR_CHAT_IDS") or "").split(",") if x.strip()]
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+MAIL_FROM = os.environ.get("MAIL_FROM") or "Стол заявок <onboarding@resend.dev>"
+MODERATOR_EMAILS = [e.strip() for e in (os.environ.get("MODERATOR_EMAILS") or "").split(",") if e.strip()]
 
 BTN_NEW = "📝 Оставить заявку"
 BTN_MY = "📋 Мои заявки"
@@ -47,8 +50,71 @@ DB_HEADERS = {
 }
 
 
+import re as _re
+
+def norm_url(u):
+    u = (u or "").strip()
+    if not u:
+        return ""
+    m = _re.search(r"https?://\S+", u)
+    if m:
+        return m.group(0)
+    m = _re.search(r"(?:www\.)?\S+\.\S+", u)
+    if m:
+        return "https://" + m.group(0)
+    return ""
+
+
 def no_label(no):
     return f"№{int(no):04d}" if no else ""
+
+
+def fetch_moderator_emails():
+    emails = list(MODERATOR_EMAILS)
+    try:
+        resp = requests.get(f"{SUPABASE_URL}/rest/v1/moderators?select=email", headers=DB_HEADERS, timeout=10)
+        resp.raise_for_status()
+        for r in resp.json():
+            if r.get("email"):
+                emails.append(str(r["email"]).strip())
+    except Exception as e:
+        print(f"fetch mod emails error: {e}")
+    seen, out = set(), []
+    for e in emails:
+        if e and e.lower() not in seen:
+            seen.add(e.lower()); out.append(e)
+    return out
+
+
+def send_email(to_list, subject, html):
+    if not RESEND_API_KEY or not to_list:
+        return
+    try:
+        requests.post("https://api.resend.com/emails",
+                      headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                      json={"from": MAIL_FROM, "to": to_list, "subject": subject, "html": html}, timeout=10)
+    except Exception as e:
+        print(f"email send error: {e}")
+
+
+def notify_email_new(form, no):
+    import html as _html
+    emails = fetch_moderator_emails()
+    if not emails:
+        return
+    esc = lambda x: _html.escape(str(x or ""))
+    rows = []
+    if form.get("name"): rows.append(f"<b>Клиент:</b> {esc(form.get('name'))}")
+    if form.get("phone"): rows.append(f"<b>Телефон:</b> {esc(form.get('phone'))}")
+    if form.get("address"): rows.append(f"<b>Адрес:</b> {esc(form.get('address'))}")
+    gis = norm_url(form.get("gis_url") or "")
+    if gis: rows.append(f'<b>2ГИС:</b> <a href="{esc(gis)}">{esc(gis)}</a>')
+    if form.get("urgency"): rows.append(f"<b>Срочность:</b> {esc(form.get('urgency'))}")
+    if form.get("description"): rows.append(f"<b>Проблема:</b> {esc(form.get('description'))}")
+    if form.get("photo_url"): rows.append(f'<b>Фото:</b> <a href="{esc(form.get("photo_url"))}">открыть</a>')
+    title = f"Новая заявка {no_label(no)}".strip() if no else "Новая заявка"
+    html = f"<h2>🆕 {esc(title)}</h2>" + "<br>".join(rows)
+    send_email(emails, title, html)
 
 
 def upsert_client(chat_id, form):
@@ -57,7 +123,7 @@ def upsert_client(chat_id, form):
     name = (form.get("name") or "").strip()
     phone = (form.get("phone") or "").strip()
     address = (form.get("address") or "").strip()
-    gis = (form.get("gis_url") or "").strip()
+    gis = norm_url(form.get("gis_url") or "")
     if name: payload["name"] = name
     if phone: payload["phone"] = phone
     if address: payload["address"] = address
@@ -105,7 +171,7 @@ def notify_masters_pool(form, no=None):
     address = (form.get("address") or "").strip()
     gis = (form.get("gis_url") or "").strip()
     if address: text += f"\nАдрес: {address}"
-    if gis: text += f"\n🗺 2ГИС: {gis}"
+    if gis: text += f"\n🗺 2ГИС: {norm_url(gis)}"
     if urgency: text += f"\nСрочность: {urgency}"
     if photo: text += f"\n📷 Фото: {photo}"
     markup = {"inline_keyboard": [[{"text": "🧰 Открыть кабинет", "web_app": {"url": CABINET_URL}}]]} if CABINET_URL else None
@@ -198,7 +264,7 @@ def notify_new_ticket(form, no=None):
     address = (form.get("address") or "").strip()
     gis = (form.get("gis_url") or "").strip()
     if address: mod_text += f"Адрес: {address}\n"
-    if gis: mod_text += f"🗺 2ГИС: {gis}\n"
+    if gis: mod_text += f"🗺 2ГИС: {norm_url(gis)}\n"
     mod_text += f"Проблема: {desc}"
     if urgency: mod_text += f"\nСрочность: {urgency}"
     if photo: mod_text += f"\n📷 Фото: {photo}"
@@ -367,12 +433,15 @@ class handler(BaseHTTPRequestHandler):
                                 main_keyboard(chat_id))
                     else:
                         manual = is_manual_moderation()
+                        if data.get("gis_url"):
+                            data["gis_url"] = norm_url(data.get("gis_url"))
                         ticket = insert_ticket(chat_id, data, "new" if manual else "pool")
                         upsert_client(chat_id, data)
                         no = ticket.get("ticket_no") if ticket else None
                         notify_new_ticket(data, no)        # модераторам — всегда
                         if not manual:
                             notify_masters_pool(data, no)  # авто-режим — сразу мастерам в пул
+                        notify_email_new(data, no)         # письмо модераторам на почту
                         confirm = (f"✅ Заявка {no_label(no)} принята! Передали в обработку.\n\nЕсли будут вопросы — назовите этот номер.") if no else "✅ Заявка принята! Передали в обработку."
                         tg_send(TG_BOT_TOKEN, chat_id, confirm, main_keyboard(chat_id))
                 elif "text" in message:
