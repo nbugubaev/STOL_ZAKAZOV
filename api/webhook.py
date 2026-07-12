@@ -15,6 +15,7 @@ MODERATOR_IDS = [x.strip() for x in (os.environ.get("MODERATOR_CHAT_IDS") or "")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 MAIL_FROM = os.environ.get("MAIL_FROM") or "Стол заявок <onboarding@resend.dev>"
 MODERATOR_EMAILS = [e.strip() for e in (os.environ.get("MODERATOR_EMAILS") or "").split(",") if e.strip()]
+BOARD_URL = os.environ.get("BOARD_URL") or "https://stol-zakazov.vercel.app/"
 
 BTN_NEW = "📝 Оставить заявку"
 BTN_MY = "📋 Мои заявки"
@@ -114,6 +115,13 @@ def notify_email_new(form, no):
     if form.get("photo_url"): rows.append(f'<b>Фото:</b> <a href="{esc(form.get("photo_url"))}">открыть</a>')
     title = f"Новая заявка {no_label(no)}".strip() if no else "Новая заявка"
     html = f"<h2>🆕 {esc(title)}</h2>" + "<br>".join(rows)
+    if BOARD_URL:
+        html += (
+            f'<p style="margin-top:20px">'
+            f'<a href="{esc(BOARD_URL)}" '
+            f'style="display:inline-block;padding:12px 20px;background:#2563eb;color:#ffffff;'
+            f'text-decoration:none;border-radius:8px;font-weight:600">Открыть панель модерации</a></p>'
+        )
     send_email(emails, title, html)
 
 
